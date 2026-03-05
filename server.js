@@ -43,18 +43,32 @@ function readArticles() {
   return readJson(DATA_FILE, []);
 }
 
-// ── 权限检查：仅本地访问 ──────────────────────────────────────────────────────
-function isLocalAccess(req) {
-  const clientIP = req.socket.remoteAddress;
-  return clientIP === '127.0.0.1' || clientIP === '::1' || clientIP === '::ffff:127.0.0.1';
-}
+// ── 权限检查：密码保护 ──────────────────────────────────────────────────────
+const ADMIN_PASSWORD = '1995';
 
-function requireLocalAccess(req, res) {
-  if (!isLocalAccess(req)) {
-    res.writeHead(403, { 'Content-Type': 'application/json; charset=utf-8' });
-    res.end(JSON.stringify({ error: '此接口仅限本地访问' }));
+function requireAuth(req, res) {
+  const auth = req.headers.authorization;
+  if (!auth || !auth.startsWith('Basic ')) {
+    res.writeHead(401, {
+      'WWW-Authenticate': 'Basic realm="Admin Area"',
+      'Content-Type': 'text/html; charset=utf-8'
+    });
+    res.end('需要密码访问');
     return false;
   }
+
+  const credentials = Buffer.from(auth.split(' ')[1], 'base64').toString();
+  const [username, password] = credentials.split(':');
+
+  if (password !== ADMIN_PASSWORD) {
+    res.writeHead(401, {
+      'WWW-Authenticate': 'Basic realm="Admin Area"',
+      'Content-Type': 'text/html; charset=utf-8'
+    });
+    res.end('密码错误');
+    return false;
+  }
+
   return true;
 }
 
@@ -174,7 +188,7 @@ const server = http.createServer((req, res) => {
 
   // GET /admin - 仅本地访问
   if (req.method === 'GET' && url.pathname === '/admin') {
-    if (!requireLocalAccess(req, res)) return;
+    if (!requireAuth(req, res)) return;
     try {
       res.writeHead(200, { 'Content-Type': 'text/html; charset=utf-8' });
       res.end(fs.readFileSync(ADMIN_FILE, 'utf8'));
@@ -204,7 +218,7 @@ const server = http.createServer((req, res) => {
 
   // POST /api/refresh - 仅本地访问
   if (req.method === 'POST' && url.pathname === '/api/refresh') {
-    if (!requireLocalAccess(req, res)) return;
+    if (!requireAuth(req, res)) return;
     res.writeHead(200, { 'Content-Type': 'application/json; charset=utf-8', 'Access-Control-Allow-Origin': '*' });
     res.end(JSON.stringify({ status: 'refreshing' }));
     exec('python3 run_cailianshe_2.py --no-kb --fast', {
@@ -241,7 +255,7 @@ const server = http.createServer((req, res) => {
 
   // POST /api/sources - 仅本地访问
   if (req.method === 'POST' && url.pathname === '/api/sources') {
-    if (!requireLocalAccess(req, res)) return;
+    if (!requireAuth(req, res)) return;
     readBody(req).then(data => {
       fs.writeFileSync(SOURCES_FILE, JSON.stringify(data, null, 2));
       res.writeHead(200, { 'Content-Type': 'application/json', 'Access-Control-Allow-Origin': '*' });
@@ -254,7 +268,7 @@ const server = http.createServer((req, res) => {
 
   // GET /api/settings - 仅本地访问
   if (req.method === 'GET' && url.pathname === '/api/settings') {
-    if (!requireLocalAccess(req, res)) return;
+    if (!requireAuth(req, res)) return;
     res.writeHead(200, { 'Content-Type': 'application/json; charset=utf-8', 'Access-Control-Allow-Origin': '*' });
     res.end(JSON.stringify(readJson(SETTINGS_FILE, DEFAULT_SETTINGS)));
     return;
@@ -279,7 +293,7 @@ const server = http.createServer((req, res) => {
 
   // POST /api/settings - 仅本地访问
   if (req.method === 'POST' && url.pathname === '/api/settings') {
-    if (!requireLocalAccess(req, res)) return;
+    if (!requireAuth(req, res)) return;
     readBody(req).then(data => {
       fs.writeFileSync(SETTINGS_FILE, JSON.stringify(data, null, 2));
       scheduleAutoRefresh();   // 用新间隔重置计时器
@@ -320,7 +334,7 @@ const server = http.createServer((req, res) => {
 
   // POST /api/pause - 仅本地访问
   if (req.method === 'POST' && url.pathname === '/api/pause') {
-    if (!requireLocalAccess(req, res)) return;
+    if (!requireAuth(req, res)) return;
     pauseAutoRefresh();
     res.writeHead(200, { 'Content-Type': 'application/json; charset=utf-8', 'Access-Control-Allow-Origin': '*' });
     res.end(JSON.stringify({ status: 'paused' }));
@@ -329,7 +343,7 @@ const server = http.createServer((req, res) => {
 
   // POST /api/resume - 仅本地访问
   if (req.method === 'POST' && url.pathname === '/api/resume') {
-    if (!requireLocalAccess(req, res)) return;
+    if (!requireAuth(req, res)) return;
     resumeAutoRefresh();
     res.writeHead(200, { 'Content-Type': 'application/json; charset=utf-8', 'Access-Control-Allow-Origin': '*' });
     res.end(JSON.stringify({ status: 'running' }));
@@ -345,7 +359,7 @@ const server = http.createServer((req, res) => {
 
   // GET /api/xueqiu-user?id=xxx - 获取雪球用户名（仅本地访问）
   if (req.method === 'GET' && url.pathname === '/api/xueqiu-user') {
-    if (!requireLocalAccess(req, res)) return;
+    if (!requireAuth(req, res)) return;
     const userId = url.searchParams.get('id');
     if (!userId) {
       res.writeHead(400, { 'Content-Type': 'application/json' });
