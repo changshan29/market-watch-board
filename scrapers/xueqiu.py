@@ -43,6 +43,21 @@ def _create_driver():
     options.add_argument('--disable-blink-features=AutomationControlled')
     options.add_argument('--user-agent=Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36')
 
+    # 内存优化（适配 Render 512MB 限制）
+    options.add_argument('--disable-extensions')
+    options.add_argument('--disable-software-rasterizer')
+    options.add_argument('--disable-background-networking')
+    options.add_argument('--disable-default-apps')
+    options.add_argument('--disable-sync')
+    options.add_argument('--disable-translate')
+    options.add_argument('--hide-scrollbars')
+    options.add_argument('--metrics-recording-only')
+    options.add_argument('--mute-audio')
+    options.add_argument('--no-first-run')
+    options.add_argument('--safebrowsing-disable-auto-update')
+    options.add_argument('--single-process')  # 单进程模式，减少内存占用
+    options.add_argument('--window-size=1280,720')
+
     # 隐藏webdriver特征
     options.add_experimental_option("excludeSwitches", ["enable-automation"])
     options.add_experimental_option('useAutomationExtension', False)
