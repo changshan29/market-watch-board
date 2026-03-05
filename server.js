@@ -111,6 +111,14 @@ function resumeAutoRefresh() {
 
 // 启动时立即执行一次爬取（非阻塞，超时60秒）
 console.log('[startup] running initial scrape...');
+console.log('[startup] cwd:', __dirname);
+console.log('[startup] command: python3 run_cailianshe_2.py --no-kb --fast');
+
+// 先测试Python是否可用
+exec('python3 --version', (err, stdout) => {
+  console.log('[startup] python3 --version:', stdout.trim());
+});
+
 lastScrapeTime = new Date().toISOString();
 lastScrapeStatus = 'running (startup)';
 exec('python3 run_cailianshe_2.py --no-kb --fast', {
@@ -118,8 +126,14 @@ exec('python3 run_cailianshe_2.py --no-kb --fast', {
   timeout: 60000,  // 60秒超时
   maxBuffer: 10 * 1024 * 1024  // 10MB buffer
 }, (err, stdout, stderr) => {
+  console.log('[startup] callback triggered');
+  console.log('[startup] err:', err);
+  console.log('[startup] stdout length:', stdout ? stdout.length : 0);
+  console.log('[startup] stderr length:', stderr ? stderr.length : 0);
+
   if (err) {
     console.error('[startup] error:', err.message);
+    console.error('[startup] error code:', err.code);
     console.error('[startup] stderr:', stderr);
     console.error('[startup] stdout:', stdout);
     lastScrapeStatus = 'error: ' + err.message;
