@@ -77,9 +77,14 @@ function scheduleAutoRefresh() {
     console.log('[auto] running full scraper...');
     lastScrapeTime = new Date().toISOString();
     lastScrapeStatus = 'running';
-    exec('python3 run_cailianshe_2.py --no-kb --fast', { cwd: __dirname }, (err) => {
+    exec('python3 run_cailianshe_2.py --no-kb --fast', {
+      cwd: __dirname,
+      timeout: 60000,
+      maxBuffer: 10 * 1024 * 1024
+    }, (err, stdout, stderr) => {
       if (err) {
         console.error('[auto] error:', err.message);
+        console.error('[auto] stderr:', stderr);
         lastScrapeStatus = 'error: ' + err.message;
       } else {
         console.log('[auto] done');
@@ -104,16 +109,29 @@ function resumeAutoRefresh() {
   console.log('[auto] resumed');
 }
 
-// 启动时立即执行一次爬取
+// 启动时立即执行一次爬取（非阻塞，超时60秒）
 console.log('[startup] running initial scrape...');
 lastScrapeTime = new Date().toISOString();
 lastScrapeStatus = 'running (startup)';
-exec('python3 run_cailianshe_2.py --no-kb --fast', { cwd: __dirname }, (err) => {
+exec('python3 run_cailianshe_2.py --no-kb --fast', {
+  cwd: __dirname,
+  timeout: 60000,  // 60秒超时
+  maxBuffer: 10 * 1024 * 1024  // 10MB buffer
+}, (err, stdout, stderr) => {
   if (err) {
     console.error('[startup] error:', err.message);
+    console.error('[startup] stderr:', stderr);
+    console.error('[startup] stdout:', stdout);
     lastScrapeStatus = 'error: ' + err.message;
+
+    // 即使失败也创建空数据文件，避免前端报错
+    const dataDir = path.join(__dirname, 'data');
+    const dataFile = path.join(dataDir, 'articles.json');
+    if (!fs.existsSync(dataDir)) fs.mkdirSync(dataDir, { recursive: true });
+    if (!fs.existsSync(dataFile)) fs.writeFileSync(dataFile, '[]');
   } else {
     console.log('[startup] initial scrape done');
+    console.log('[startup] stdout:', stdout.slice(0, 500));
     lastScrapeStatus = 'success';
   }
   scheduleAutoRefresh();
@@ -167,9 +185,17 @@ const server = http.createServer((req, res) => {
     if (!requireLocalAccess(req, res)) return;
     res.writeHead(200, { 'Content-Type': 'application/json; charset=utf-8', 'Access-Control-Allow-Origin': '*' });
     res.end(JSON.stringify({ status: 'refreshing' }));
-    exec('python3 run_cailianshe_2.py --no-kb', { cwd: __dirname }, (err, stdout, stderr) => {
-      if (err) console.error('[refresh] error:', stderr);
-      else     console.log('[refresh] done:', stdout.slice(0, 200));
+    exec('python3 run_cailianshe_2.py --no-kb --fast', {
+      cwd: __dirname,
+      timeout: 60000,
+      maxBuffer: 10 * 1024 * 1024
+    }, (err, stdout, stderr) => {
+      if (err) {
+        console.error('[refresh] error:', err.message);
+        console.error('[refresh] stderr:', stderr);
+      } else {
+        console.log('[refresh] done:', stdout.slice(0, 200));
+      }
     });
     return;
   }
