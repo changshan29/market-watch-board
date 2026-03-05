@@ -67,12 +67,23 @@ def _fetch_user_with_selenium(user_id: str, count: int = 20) -> list[dict]:
         wait.until(EC.presence_of_element_located((By.CSS_SELECTOR, ".timeline__item")))
         time.sleep(3)
 
-        # 从页面标题提取用户名（格式："用户名 - 雪球"）
+        # 提取用户名（优先从页面元素，其次从标题）
+        username = "雪球用户"
         try:
-            title = driver.title
-            username = title.split(" - ")[0].strip() if " - " in title else "雪球用户"
+            # 方法1：从页面中的用户名元素提取
+            name_elem = driver.find_element(By.CSS_SELECTOR, ".user-name")
+            username = name_elem.text.strip()
         except:
-            username = "雪球用户"
+            try:
+                # 方法2：从页面标题提取（格式："用户名 - 雪球"）
+                title = driver.title
+                # 支持多种分隔符
+                for sep in [" - ", " — ", "-", "—"]:
+                    if sep in title:
+                        username = title.split(sep)[0].strip()
+                        break
+            except:
+                pass
 
         # 滚动加载更多内容
         for _ in range(3):
