@@ -1,11 +1,11 @@
 [phases.setup]
-nixPkgs = ["nodejs-18_x", "python310", "python310Packages.pip"]
+nixPkgs = ["nodejs-18_x", "python310"]
 
 [phases.install]
 cmds = [
-  "pip install --upgrade pip",
-  "pip install requests beautifulsoup4"
+  "python3 -m venv /opt/venv",
+  ". /opt/venv/bin/activate && pip install requests beautifulsoup4"
 ]
 
 [start]
-cmd = "node server.js"
+cmd = ". /opt/venv/bin/activate && node server.js"
