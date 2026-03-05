@@ -1,8 +1,11 @@
 [phases.setup]
-nixPkgs = ["nodejs", "python310"]
+nixPkgs = ["nodejs-18_x", "python310", "python310Packages.pip"]
 
 [phases.install]
-cmds = ["pip install -r requirements.txt"]
+cmds = [
+  "pip install --upgrade pip",
+  "pip install requests beautifulsoup4"
+]
 
 [start]
 cmd = "node server.js"
