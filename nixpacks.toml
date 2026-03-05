@@ -1,10 +1,10 @@
 [phases.setup]
-nixPkgs = ["nodejs-18_x", "python310"]
+nixPkgs = ["nodejs-18_x", "python310", "chromium", "chromedriver"]
 
 [phases.install]
 cmds = [
   "python3 -m venv /opt/venv",
-  ". /opt/venv/bin/activate && pip install requests beautifulsoup4"
+  ". /opt/venv/bin/activate && pip install -r requirements.txt"
 ]
 
 [start]
