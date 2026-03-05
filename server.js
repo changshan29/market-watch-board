@@ -114,9 +114,17 @@ console.log('[startup] running initial scrape...');
 console.log('[startup] cwd:', __dirname);
 console.log('[startup] command: python3 run_cailianshe_2.py --no-kb --fast');
 
-// 先测试Python是否可用
+// 先测试简单的Python脚本
+exec('python3 test_simple.py', { cwd: __dirname }, (err, stdout, stderr) => {
+  console.log('[test] simple python test:');
+  console.log('[test] err:', err);
+  console.log('[test] stdout:', stdout);
+  console.log('[test] stderr:', stderr);
+});
+
+// 测试Python是否可用
 exec('python3 --version', (err, stdout) => {
-  console.log('[startup] python3 --version:', stdout.trim());
+  console.log('[startup] python3 --version:', stdout ? stdout.trim() : 'no output');
 });
 
 lastScrapeTime = new Date().toISOString();
