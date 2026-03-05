@@ -10,10 +10,13 @@ scrapers/webpage.py — 指定URL列表爬取
 import json
 import hashlib
 import requests
-from datetime import datetime
+from datetime import datetime, timezone, timedelta
 from pathlib import Path
 from urllib.parse import urlparse
 from bs4 import BeautifulSoup
+
+# 中国时区 UTC+8
+CHINA_TZ = timezone(timedelta(hours=8))
 
 SOURCES_FILE = Path(__file__).parent.parent / "sources.json"
 
@@ -76,13 +79,13 @@ def _fetch_ths(name: str = "同花顺财经") -> list[dict]:
         ctime = item.get("ctime") or item.get("created_at") or ""
         try:
             if str(ctime).isdigit():
-                published_at = datetime.fromtimestamp(int(ctime)).isoformat()
+                published_at = datetime.fromtimestamp(int(ctime), tz=CHINA_TZ).isoformat()
             elif ctime:
                 published_at = datetime.fromisoformat(str(ctime)).isoformat()
             else:
-                published_at = datetime.now().isoformat()
+                published_at = datetime.now(tz=CHINA_TZ).isoformat()
         except Exception:
-            published_at = datetime.now().isoformat()
+            published_at = datetime.now(tz=CHINA_TZ).isoformat()
 
         articles.append({
             "id":           uid,

@@ -12,9 +12,12 @@ scrapers/xueqiu.py — 雪球广场爬取
 import json
 import re
 import requests
-from datetime import datetime
+from datetime import datetime, timezone, timedelta
 from bs4 import BeautifulSoup
 from pathlib import Path
+
+# 中国时区 UTC+8
+CHINA_TZ = timezone(timedelta(hours=8))
 
 XUEQIU_HOME          = "https://xueqiu.com"
 XUEQIU_TIMELINE      = "https://xueqiu.com/v4/statuses/public_timeline_by_category.json"
@@ -30,7 +33,14 @@ HEADERS = {
         "Chrome/120.0.0.0 Safari/537.36"
     ),
     "Accept": "application/json, text/plain, */*",
+    "Accept-Language": "zh-CN,zh;q=0.9,en;q=0.8",
+    "Accept-Encoding": "gzip, deflate, br",
     "Referer": "https://xueqiu.com/",
+    "Origin": "https://xueqiu.com",
+    "Connection": "keep-alive",
+    "Sec-Fetch-Dest": "empty",
+    "Sec-Fetch-Mode": "cors",
+    "Sec-Fetch-Site": "same-origin",
 }
 
 
@@ -38,10 +48,24 @@ def _make_session() -> requests.Session:
     """请求首页 + hq 页面，获取 xq_a_token 等必要 Cookie。"""
     s = requests.Session()
     try:
-        s.get(XUEQIU_HOME, headers={"User-Agent": HEADERS["User-Agent"]}, timeout=20)
-        s.get(f"{XUEQIU_HOME}/hq",
-              headers={"User-Agent": HEADERS["User-Agent"], "Referer": XUEQIU_HOME},
-              timeout=20)
+        # 第一步：访问首页获取基础 Cookie
+        resp1 = s.get(XUEQIU_HOME, headers={
+            "User-Agent": HEADERS["User-Agent"],
+            "Accept": "text/html,application/xhtml+xml,application/xml;q=0.9,image/webp,*/*;q=0.8",
+            "Accept-Language": "zh-CN,zh;q=0.9",
+        }, timeout=20)
+
+        # 第二步：访问行情页面
+        resp2 = s.get(f"{XUEQIU_HOME}/hq", headers={
+            "User-Agent": HEADERS["User-Agent"],
+            "Referer": XUEQIU_HOME,
+            "Accept": "text/html,application/xhtml+xml,application/xml;q=0.9,image/webp,*/*;q=0.8",
+        }, timeout=20)
+
+        # 等待一下，模拟真实用户行为
+        import time
+        time.sleep(1)
+
     except Exception as e:
         print(f"[xueqiu] 创建会话失败: {e}")
     return s
@@ -113,9 +137,9 @@ def _parse_item(raw: dict) -> dict | None:
     orig = raw.get("original_status") or {}
     ts_ms = orig.get("created_at") or data.get("created_at") or 0
     if isinstance(ts_ms, int) and ts_ms > 0:
-        published_at = datetime.fromtimestamp(ts_ms / 1000).isoformat()
+        published_at = datetime.fromtimestamp(ts_ms / 1000, tz=CHINA_TZ).isoformat()
     else:
-        published_at = datetime.now().isoformat()
+        published_at = datetime.now(tz=CHINA_TZ).isoformat()
 
     summary = desc[:100] + ("…" if len(desc) > 100 else "")
 

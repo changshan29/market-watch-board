@@ -15,9 +15,12 @@ import re
 import json
 import hashlib
 import requests
-from datetime import datetime
+from datetime import datetime, timezone, timedelta
 from pathlib import Path
 from bs4 import BeautifulSoup
+
+# 中国时区 UTC+8
+CHINA_TZ = timezone(timedelta(hours=8))
 
 SOURCES_FILE = Path(__file__).parent.parent / "sources.json"
 SOGOU_SEARCH = "https://weixin.sogou.com/weixin"
@@ -119,7 +122,7 @@ def _fetch_account(session: requests.Session, account_name: str, limit: int = 10
 
         ts_match = re.search(r"timeConvert\('(\d+)'\)", script_el.string or "")
         ts = int(ts_match.group(1)) if ts_match else 0
-        published_at = datetime.fromtimestamp(ts).isoformat() if ts else datetime.now().isoformat()
+        published_at = datetime.fromtimestamp(ts, tz=CHINA_TZ).isoformat() if ts else datetime.now(tz=CHINA_TZ).isoformat()
 
         sogou_path = title_el.get("href", "")
         real_url   = _resolve_url(session, sogou_path)

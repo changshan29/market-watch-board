@@ -12,8 +12,11 @@ import json
 import re
 import time
 import requests
-from datetime import datetime
+from datetime import datetime, timezone, timedelta
 from pathlib import Path
+
+# 中国时区 UTC+8
+CHINA_TZ = timezone(timedelta(hours=8))
 
 API_URL = "https://www.cls.cn/nodeapi/telegraphList"
 HEADERS = {
@@ -68,7 +71,7 @@ def _resolve_title(title: str, content: str) -> str:
 
 def _raw_to_article(item: dict) -> dict:
     ts = item.get("ctime", 0)
-    published_at = datetime.fromtimestamp(ts).isoformat() if ts else ""
+    published_at = datetime.fromtimestamp(ts, tz=CHINA_TZ).isoformat() if ts else ""
     raw_title = item.get("title", "") or item.get("brief", "")
     content   = item.get("content", "") or item.get("brief", "")
     title     = _resolve_title(raw_title, content)
