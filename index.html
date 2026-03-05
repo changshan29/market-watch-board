@@ -465,11 +465,6 @@
 <div id="header">
   <div class="header-top">
     <h1>盯盘资讯看板</h1>
-    <div class="header-actions">
-      <button class="btn sec" id="pauseBtn" onclick="togglePause()" style="display:none">暂停</button>
-      <button class="btn sec" id="refreshBtn" onclick="triggerRefresh()" style="display:none">刷新数据</button>
-      <button class="btn sec" id="adminBtn" onclick="window.location.href='/admin'" style="display:none">管理</button>
-    </div>
     <div class="meta" id="metaInfo">-</div>
   </div>
   <div class="filter-group">
@@ -957,52 +952,10 @@
   }
 
   async function checkPauseStatus() {
-    try {
-      const resp = await fetch('/api/status');
-
-      // 检查是否有管理权限（本地访问）
-      const hasAdminAccess = resp.status !== 403;
-
-      if (hasAdminAccess) {
-        // 显示管理按钮
-        document.getElementById('pauseBtn').style.display = '';
-        document.getElementById('refreshBtn').style.display = '';
-        document.getElementById('adminBtn').style.display = '';
-
-        const data = await resp.json();
-        isPaused = data.paused;
-        const btn = document.getElementById('pauseBtn');
-        if (isPaused) {
-          btn.textContent = '开始';
-          btn.style.background = '#4ecb71';
-          // 如果已暂停，停止前端自动刷新
-          if (autoTimer) {
-            clearInterval(autoTimer);
-            autoTimer = null;
-          }
-        } else {
-          btn.textContent = '暂停';
-          btn.style.background = '';
-          // 如果未暂停，启动前端自动刷新
-          if (!autoTimer) {
-            autoTimer = setInterval(loadAll, 15 * 1000);
-            loadAll();  // 立即加载一次
-          }
-        }
-      } else {
-        // 外部访问，隐藏管理按钮，直接启动自动刷新
-        if (!autoTimer) {
-          autoTimer = setInterval(loadAll, 15 * 1000);
-          loadAll();
-        }
-      }
-    } catch (e) {
-      console.error('初始化失败:', e);
-      // 出错时也启动自动刷新
-      if (!autoTimer) {
-        autoTimer = setInterval(loadAll, 15 * 1000);
-        loadAll();
-      }
+    // 直接启动自动刷新
+    if (!autoTimer) {
+      autoTimer = setInterval(loadAll, 15 * 1000);
+      loadAll();  // 立即加载一次
     }
   }
 

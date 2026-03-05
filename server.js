@@ -162,8 +162,9 @@ const server = http.createServer((req, res) => {
     return;
   }
 
-  // POST /api/refresh
+  // POST /api/refresh - 仅本地访问
   if (req.method === 'POST' && url.pathname === '/api/refresh') {
+    if (!requireLocalAccess(req, res)) return;
     res.writeHead(200, { 'Content-Type': 'application/json; charset=utf-8', 'Access-Control-Allow-Origin': '*' });
     res.end(JSON.stringify({ status: 'refreshing' }));
     exec('python3 run_cailianshe_2.py --no-kb', { cwd: __dirname }, (err, stdout, stderr) => {
