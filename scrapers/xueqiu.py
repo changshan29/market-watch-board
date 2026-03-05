@@ -13,17 +13,24 @@ import re
 import time
 from datetime import datetime, timezone, timedelta
 from pathlib import Path
-from selenium import webdriver
-from selenium.webdriver.chrome.options import Options
-from selenium.webdriver.common.by import By
-from selenium.webdriver.support.ui import WebDriverWait
-from selenium.webdriver.support import expected_conditions as EC
 
 # 中国时区 UTC+8
 CHINA_TZ = timezone(timedelta(hours=8))
 
 XUEQIU_HOME = "https://xueqiu.com"
 SOURCES_FILE = Path(__file__).parent.parent / "sources.json"
+
+# 尝试导入Selenium，如果失败则标记为不可用
+try:
+    from selenium import webdriver
+    from selenium.webdriver.chrome.options import Options
+    from selenium.webdriver.common.by import By
+    from selenium.webdriver.support.ui import WebDriverWait
+    from selenium.webdriver.support import expected_conditions as EC
+    SELENIUM_AVAILABLE = True
+except ImportError:
+    SELENIUM_AVAILABLE = False
+    print("[xueqiu] Selenium未安装，雪球爬虫不可用")
 
 
 def _create_driver():
@@ -164,6 +171,11 @@ def fetch(count: int = 20) -> list[dict]:
     若 sources.json 配置了雪球用户，则爬取用户时间线。
     网络失败时返回空列表，不抛出异常。
     """
+    # 检查Selenium是否可用
+    if not SELENIUM_AVAILABLE:
+        print("[xueqiu] Selenium未安装，跳过雪球爬取")
+        return []
+
     try:
         raw_sources = json.loads(SOURCES_FILE.read_text())
         xq_users = raw_sources.get("xueqiu", [])
