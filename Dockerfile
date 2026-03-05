@@ -57,5 +57,8 @@ RUN mkdir -p data
 # 暴露端口
 EXPOSE 3220
 
+# 验证Python安装
+RUN python3 --version && which python3 && ls -la /app/run_cailianshe_2.py
+
 # 启动命令
 CMD ["node", "server.js"]
