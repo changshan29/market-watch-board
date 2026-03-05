@@ -94,7 +94,13 @@ function resumeAutoRefresh() {
   console.log('[auto] resumed');
 }
 
-scheduleAutoRefresh();
+// 启动时立即执行一次爬取
+console.log('[startup] running initial scrape...');
+exec('python3 run_cailianshe_2.py --no-kb --fast', { cwd: __dirname }, (err) => {
+  if (err) console.error('[startup] error:', err.message);
+  else     console.log('[startup] initial scrape done');
+  scheduleAutoRefresh();
+});
 
 // ── HTTP 服务 ─────────────────────────────────────────────────────────────────
 const server = http.createServer((req, res) => {
