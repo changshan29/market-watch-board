@@ -1,0 +1,16 @@
+{
+  "name": "market-watch-board",
+  "version": "1.0.0",
+  "description": "盯盘资讯看板 - 财经资讯聚合平台",
+  "main": "server.js",
+  "scripts": {
+    "start": "node server.js",
+    "scrape": "python3 run_cailianshe_2.py --no-kb --fast"
+  },
+  "engines": {
+    "node": ">=16.x"
+  },
+  "dependencies": {},
+  "author": "",
+  "license": "MIT"
+}

@@ -1,0 +1,12 @@
+node_modules/
+*.log
+.DS_Store
+.env
+data/articles.json
+server.log
+__pycache__/
+*.pyc
+*.pyo
+.pytest_cache/
+.vscode/
+.idea/

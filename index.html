@@ -1,0 +1,1116 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>盯盘资讯看板</title>
+  <style>
+    *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+
+    html, body {
+      height: 100%;
+      font-family: -apple-system, BlinkMacSystemFont, "PingFang SC", "Microsoft YaHei", sans-serif;
+      background: #0f1117;
+      color: #e0e0e0;
+      overflow: hidden;
+    }
+
+    /* ── 顶栏 ── */
+    #header {
+      background: #1a1d2e;
+      border-bottom: 1px solid #2a2d3e;
+      padding: 10px 16px;
+    }
+
+    .header-top {
+      display: flex;
+      align-items: center;
+      gap: 12px;
+      margin-bottom: 8px;
+    }
+
+    #header h1 {
+      font-size: 15px;
+      font-weight: 600;
+      color: #fff;
+      white-space: nowrap;
+    }
+
+    .header-actions {
+      display: flex;
+      gap: 8px;
+      align-items: center;
+      flex: 1;
+    }
+
+    .btn {
+      background: #2d5be3;
+      color: #fff;
+      border: none;
+      border-radius: 6px;
+      padding: 6px 13px;
+      font-size: 13px;
+      cursor: pointer;
+    }
+    .btn:hover { background: #3d6bf5; }
+    .btn.sec { background: #3a3f55; }
+    .btn.sec:hover { background: #484e6a; }
+
+    .meta { margin-left: auto; font-size: 11px; color: #555; white-space: nowrap; }
+
+    /* 主题芯片 */
+    .filter-group {
+      display: flex;
+      align-items: center;
+      gap: 6px;
+    }
+    .filter-label { font-size: 11px; color: #555; white-space: nowrap; }
+    .chips { display: flex; gap: 5px; flex-wrap: wrap; }
+    .chip {
+      font-size: 12px;
+      padding: 2px 10px;
+      border-radius: 20px;
+      border: 1px solid #3a3d4e;
+      background: #252836;
+      color: #888;
+      cursor: pointer;
+      user-select: none;
+      transition: all .1s;
+    }
+    .chip:hover { border-color: #5b8cff; color: #ccc; }
+    .chip.active[data-val="全部"]    { background:#2a3050;border-color:#4a6acc;color:#8ab0ff; }
+    .chip.active[data-val="宏观政策"]{ background:#3a1a1a;border-color:#aa3030;color:#e05050; }
+    .chip.active[data-val="行业动态"]{ background:#1a2a3a;border-color:#2a6090;color:#50a0e0; }
+    .chip.active[data-val="个股公司"]{ background:#2a1a3a;border-color:#7a30aa;color:#b060e0; }
+    .chip.active[data-val="市场资金"]{ background:#1a3a2a;border-color:#208050;color:#40c080; }
+    .chip.active[data-val="其他"]    { background:#2a2a2a;border-color:#555;color:#888; }
+
+    /* ── 主体四面板 ── */
+    #board {
+      display: grid;
+      grid-template-columns: 1fr 1fr 1fr;
+      height: calc(100vh - 74px);
+    }
+
+    /* 左：网页 */
+    #panel-web {
+      border-right: 1px solid #2a2d3e;
+      overflow-y: auto;
+      height: 100%;
+    }
+
+    /* 中：雪球 + 公众号叠放 */
+    #panel-right {
+      display: grid;
+      grid-template-rows: 1fr 1fr;
+      height: 100%;
+      overflow: hidden;
+      border-right: 1px solid #2a2d3e;
+    }
+
+    #panel-xueqiu {
+      border-bottom: 1px solid #2a2d3e;
+      overflow-y: auto;
+    }
+
+    #panel-wechat {
+      overflow-y: auto;
+    }
+
+    /* 右：概念 + 关键词叠放 */
+    #panel-filter-col {
+      display: flex;
+      flex-direction: column;
+      height: 100%;
+      overflow: hidden;
+    }
+
+    #panel-concept {
+      flex: 1;
+      border-bottom: 1px solid #2a2d3e;
+      display: flex;
+      flex-direction: column;
+      overflow: hidden;
+      min-height: 0;
+    }
+
+    #panel-keyword {
+      flex: 1;
+      display: flex;
+      flex-direction: column;
+      overflow: hidden;
+      min-height: 0;
+    }
+
+    .concept-scroll, .kw-scroll {
+      flex: 1;
+      overflow-y: auto;
+      min-height: 0;
+    }
+
+    /* ── 概念芯片区 ── */
+    .concept-chips-wrap {
+      padding: 6px 10px;
+      display: flex;
+      flex-wrap: wrap;
+      gap: 4px;
+      border-bottom: 1px solid #1e2136;
+      max-height: 88px;
+      overflow-y: auto;
+      flex-shrink: 0;
+    }
+    .concept-chip {
+      font-size: 11px;
+      padding: 2px 8px;
+      border-radius: 20px;
+      border: 1px solid #3a3d4e;
+      background: #252836;
+      color: #888;
+      cursor: pointer;
+      user-select: none;
+      white-space: nowrap;
+      transition: all .1s;
+    }
+    .concept-chip:hover { border-color: #9b59b6; color: #ccc; }
+    .concept-chip.active { background: #2e1a40; border-color: #9b59b6; color: #cc88ff; }
+
+    /* ── 关键词输入行 ── */
+    .kw-row {
+      display: flex;
+      gap: 6px;
+      padding: 7px 10px;
+      border-bottom: 1px solid #1e2136;
+      flex-shrink: 0;
+    }
+    .kw-row input {
+      flex: 1;
+      background: #252836;
+      border: 1px solid #3a3d4e;
+      border-radius: 6px;
+      color: #e0e0e0;
+      padding: 5px 10px;
+      font-size: 12px;
+      outline: none;
+    }
+    .kw-row input:focus { border-color: #2980b9; }
+
+    /* ── AI 状态 ── */
+    .ai-status {
+      font-size: 11px;
+      color: #9b59b6;
+      margin-left: 6px;
+      animation: pulse 1.2s infinite;
+    }
+    @keyframes pulse { 0%,100%{opacity:1} 50%{opacity:.4} }
+
+    /* ── 面板内部 ── */
+    .panel-header {
+      position: sticky;
+      top: 0;
+      z-index: 10;
+      background: #131620;
+      border-bottom: 1px solid #222536;
+      padding: 8px 14px;
+      display: flex;
+      align-items: center;
+      gap: 8px;
+      flex-shrink: 0;
+    }
+
+    .panel-stripe {
+      width: 3px;
+      height: 14px;
+      border-radius: 2px;
+      flex-shrink: 0;
+    }
+    .stripe-web     { background: #e08030; }
+    .stripe-xueqiu  { background: #f05050; }
+    .stripe-wechat  { background: #4ecb71; }
+    .stripe-concept { background: #9b59b6; }
+    .stripe-keyword { background: #2980b9; }
+
+    .panel-title {
+      font-size: 13px;
+      font-weight: 600;
+      color: #ccc;
+    }
+
+    .panel-count {
+      font-size: 11px;
+      color: #555;
+      margin-left: auto;
+    }
+
+    .panel-body { padding: 10px 12px; }
+
+    /* ── 文章列表 ── */
+    .article-list {
+      display: flex;
+      flex-direction: column;
+      gap: 8px;
+    }
+
+    /* ── 卡片 ── */
+    .card {
+      background: #1a1d2e;
+      border: 1px solid #222536;
+      border-radius: 8px;
+      padding: 12px 14px;
+      display: flex;
+      flex-direction: column;
+      gap: 6px;
+      transition: border-color .12s, transform .1s;
+      cursor: pointer;
+    }
+    .card:hover {
+      border-color: #3d5fcc;
+      transform: translateY(-1px);
+    }
+
+    .card-badges { display: flex; gap: 5px; flex-wrap: wrap; }
+
+    .badge {
+      font-size: 11px;
+      padding: 1px 6px;
+      border-radius: 3px;
+      font-weight: 500;
+      white-space: nowrap;
+    }
+    .badge-宏观政策 { background:#3a1a1a;color:#e05050; }
+    .badge-行业动态 { background:#1a2a3a;color:#50a0e0; }
+    .badge-个股公司 { background:#2a1a3a;color:#b060e0; }
+    .badge-市场资金 { background:#1a3a2a;color:#40c080; }
+    .badge-topic-其他{ background:#252525;color:#666; }
+    .badge-kb       { background:#3a2a10;color:#e0a030; }
+    .badge-web-src  { background:#2a1a0a;color:#e08030; }
+    .badge-xq-src   { background:#2a0a0a;color:#f05050; }
+    .badge-wc-src   { background:#0a2a0a;color:#4ecb71; }
+
+    .card-title {
+      font-size: 13px;
+      font-weight: 600;
+      color: #f0f0f0;
+      line-height: 1.4;
+    }
+
+    .card-summary {
+      font-size: 12px;
+      color: #888;
+      line-height: 1.6;
+    }
+
+    .card-footer {
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      font-size: 11px;
+      color: #444;
+      margin-top: 2px;
+    }
+
+    .empty {
+      padding: 30px 14px;
+      text-align: center;
+      color: #444;
+      font-size: 13px;
+    }
+
+    /* ── loading ── */
+    #loading {
+      display: none;
+      position: fixed;
+      inset: 0;
+      background: rgba(10,12,18,.7);
+      align-items: center;
+      justify-content: center;
+      font-size: 14px;
+      color: #888;
+      z-index: 500;
+    }
+    #loading.show { display: flex; }
+
+    /* ── 浮窗 Modal ── */
+    #modal-backdrop {
+      display: none;
+      position: fixed;
+      inset: 0;
+      background: rgba(5, 7, 15, .75);
+      z-index: 600;
+      align-items: center;
+      justify-content: center;
+      padding: 24px;
+    }
+    #modal-backdrop.show { display: flex; }
+
+    #modal {
+      background: #1c2030;
+      border: 1px solid #2e3352;
+      border-radius: 12px;
+      width: 100%;
+      max-width: 660px;
+      max-height: 82vh;
+      display: flex;
+      flex-direction: column;
+      box-shadow: 0 24px 64px rgba(0,0,0,.6);
+      animation: modalIn .15s ease;
+    }
+    @keyframes modalIn {
+      from { opacity:0; transform: translateY(10px) scale(.98); }
+      to   { opacity:1; transform: translateY(0)    scale(1);   }
+    }
+
+    #modal-head {
+      padding: 16px 18px 12px;
+      border-bottom: 1px solid #252840;
+      display: flex;
+      gap: 12px;
+      align-items: flex-start;
+    }
+
+    #modal-title {
+      flex: 1;
+      font-size: 15px;
+      font-weight: 600;
+      color: #f0f0f0;
+      line-height: 1.5;
+    }
+
+    #modal-close {
+      flex-shrink: 0;
+      width: 28px;
+      height: 28px;
+      border-radius: 6px;
+      background: none;
+      border: none;
+      color: #666;
+      font-size: 18px;
+      cursor: pointer;
+      line-height: 28px;
+      text-align: center;
+      transition: background .1s, color .1s;
+    }
+    #modal-close:hover { background: #2a2d40; color: #ccc; }
+
+    #modal-meta {
+      padding: 10px 18px;
+      display: flex;
+      gap: 8px;
+      align-items: center;
+      flex-wrap: wrap;
+      border-bottom: 1px solid #1e2136;
+    }
+
+    .modal-source { font-size: 12px; color: #666; }
+    .modal-time   { font-size: 12px; color: #555; margin-left: auto; }
+
+    #modal-body {
+      flex: 1;
+      overflow-y: auto;
+      padding: 16px 18px;
+    }
+
+    #modal-content {
+      font-size: 14px;
+      color: #c8c8c8;
+      line-height: 1.85;
+      word-break: break-word;
+    }
+    #modal-content.plain { white-space: pre-wrap; }
+    #modal-content img {
+      max-width: 100%;
+      height: auto;
+      display: block;
+      margin: 8px 0;
+      border-radius: 4px;
+    }
+
+    #modal-foot {
+      padding: 12px 18px;
+      border-top: 1px solid #1e2136;
+      display: flex;
+      justify-content: flex-end;
+    }
+
+    #modal-link {
+      display: none;
+      font-size: 13px;
+      color: #5b8cff;
+      text-decoration: none;
+      padding: 6px 14px;
+      border: 1px solid #3a5caa;
+      border-radius: 6px;
+      transition: background .1s;
+    }
+    #modal-link:hover { background: #1e2a50; }
+    #modal-link.visible { display: inline-block; }
+
+    /* ── 滚动条 ── */
+    ::-webkit-scrollbar { width: 5px; }
+    ::-webkit-scrollbar-track { background: transparent; }
+    ::-webkit-scrollbar-thumb { background: #2a2d3e; border-radius: 3px; }
+    ::-webkit-scrollbar-thumb:hover { background: #3a4060; }
+
+    /* ── 新文章淡入动画 ── */
+    @keyframes fadeIn {
+      from { opacity: 0; transform: translateY(-5px); }
+      to { opacity: 1; transform: translateY(0); }
+    }
+    .article-card.new {
+      animation: fadeIn 0.4s ease-out;
+    }
+  </style>
+</head>
+<body>
+
+<div id="header">
+  <div class="header-top">
+    <h1>盯盘资讯看板</h1>
+    <div class="header-actions">
+      <button class="btn sec" id="pauseBtn" onclick="togglePause()" style="display:none">暂停</button>
+      <button class="btn sec" id="refreshBtn" onclick="triggerRefresh()" style="display:none">刷新数据</button>
+      <button class="btn sec" id="adminBtn" onclick="window.location.href='/admin'" style="display:none">管理</button>
+    </div>
+    <div class="meta" id="metaInfo">-</div>
+  </div>
+  <div class="filter-group">
+    <span class="filter-label">主题</span>
+    <div class="chips" id="topicChips">
+      <span class="chip active" data-val="全部">全部</span>
+      <span class="chip" data-val="宏观政策">宏观政策</span>
+      <span class="chip" data-val="行业动态">行业动态</span>
+      <span class="chip" data-val="个股公司">个股公司</span>
+      <span class="chip" data-val="市场资金">市场资金</span>
+      <span class="chip" data-val="其他">其他</span>
+    </div>
+  </div>
+</div>
+
+<div id="board">
+  <!-- 左：网页 -->
+  <div id="panel-web">
+    <div class="panel-header">
+      <div class="panel-stripe stripe-web"></div>
+      <span class="panel-title">网页</span>
+      <span class="panel-count" id="cnt-web">-</span>
+    </div>
+    <div class="panel-body">
+      <div class="article-list" id="list-web"></div>
+    </div>
+  </div>
+
+  <!-- 中 -->
+  <div id="panel-right">
+    <!-- 中上：雪球 -->
+    <div id="panel-xueqiu">
+      <div class="panel-header">
+        <div class="panel-stripe stripe-xueqiu"></div>
+        <span class="panel-title">雪球</span>
+        <span class="panel-count" id="cnt-xueqiu">-</span>
+      </div>
+      <div class="panel-body">
+        <div class="article-list" id="list-xueqiu"></div>
+      </div>
+    </div>
+    <!-- 中下：公众号 -->
+    <div id="panel-wechat">
+      <div class="panel-header">
+        <div class="panel-stripe stripe-wechat"></div>
+        <span class="panel-title">公众号</span>
+        <span class="panel-count" id="cnt-wechat">-</span>
+      </div>
+      <div class="panel-body">
+        <div class="article-list" id="list-wechat"></div>
+      </div>
+    </div>
+  </div>
+
+  <!-- 右：概念 + 关键词 -->
+  <div id="panel-filter-col">
+    <!-- 右上：A股概念 -->
+    <div id="panel-concept">
+      <div class="panel-header">
+        <div class="panel-stripe stripe-concept"></div>
+        <span class="panel-title">A股概念</span>
+        <span class="ai-status" id="ai-status-concept" style="display:none">AI审核中…</span>
+        <span class="panel-count" id="cnt-concept">-</span>
+      </div>
+      <div class="concept-chips-wrap" id="concept-chips"></div>
+      <div class="concept-scroll">
+        <div class="panel-body">
+          <div class="article-list" id="list-concept">
+            <div class="empty">请从上方选择概念</div>
+          </div>
+        </div>
+      </div>
+    </div>
+    <!-- 右下：关键词搜索 -->
+    <div id="panel-keyword">
+      <div class="panel-header">
+        <div class="panel-stripe stripe-keyword"></div>
+        <span class="panel-title">关键词</span>
+        <span class="ai-status" id="ai-status-keyword" style="display:none">AI审核中…</span>
+        <span class="panel-count" id="cnt-keyword">-</span>
+      </div>
+      <div class="kw-row">
+        <input type="text" id="kwInput" placeholder="输入关键词，回车搜索…">
+        <button class="btn" onclick="runKeywordSearch()">搜索</button>
+      </div>
+      <div class="kw-scroll">
+        <div class="panel-body">
+          <div class="article-list" id="list-keyword">
+            <div class="empty">输入关键词后搜索</div>
+          </div>
+        </div>
+      </div>
+    </div>
+  </div>
+</div>
+
+<div id="loading">正在加载…</div>
+
+<!-- 浮窗 -->
+<div id="modal-backdrop" onclick="handleBackdropClick(event)">
+  <div id="modal">
+    <div id="modal-head">
+      <div id="modal-title"></div>
+      <button id="modal-close" onclick="closeModal()" title="关闭 (Esc)">×</button>
+    </div>
+    <div id="modal-meta">
+      <span id="modal-badge-topic" class="badge"></span>
+      <span id="modal-badge-kb"    class="badge badge-kb" style="display:none">KB匹配</span>
+      <span id="modal-source"      class="modal-source"></span>
+      <span id="modal-time"        class="modal-time"></span>
+    </div>
+    <div id="modal-body">
+      <div id="modal-content"></div>
+    </div>
+    <div id="modal-foot">
+      <a id="modal-link" target="_blank" rel="noopener">查看原文 ↗</a>
+    </div>
+  </div>
+</div>
+
+<script>
+  const API = '/api/articles';
+  let allArticles = [];
+  let articleMap  = {};
+  let autoTimer;
+  let selectedTopics   = new Set();
+  let selectedConcepts = new Set();
+  const aiCache = {};   // key: `${type}:${value}:${id}` → true/false
+  let currentArticleIds = new Set();
+  let forceFullRender = false;  // 强制完整渲染标志
+
+  // ── A股概念列表 ────────────────────────────────────────────────────────────
+  const CONCEPTS = [
+    '人工智能', '半导体芯片', '新能源汽车', '储能', '光伏太阳能', '锂电池',
+    '医疗器械', '创新药', '生物医药', '基因检测',
+    '数字经济', '云计算', '网络安全', '信创国产化',
+    '军工国防', '航天航空', '无人机',
+    '消费电子', '智能制造', '工业机器人', '自动驾驶',
+    '房地产', '建筑建材', '物业管理',
+    '银行金融', '证券', '保险', '期货',
+    '煤炭能源', '石油天然气', '化工材料', '钢铁有色', '黄金贵金属',
+    '农业食品', '游戏传媒',
+  ];
+
+  // ── 概念到行业映射（用于前端预过滤）────────────────────────────────────────
+  const CONCEPT_TO_INDUSTRIES = {
+    '人工智能':     ['人工智能', '半导体芯片', '云计算', '数字经济'],
+    '半导体芯片':   ['半导体芯片', '消费电子'],
+    '新能源汽车':   ['新能源汽车', '锂电池', '自动驾驶'],
+    '储能':         ['储能', '锂电池', '新能源汽车'],
+    '光伏太阳能':   ['光伏太阳能', '新能源汽车'],
+    '锂电池':       ['锂电池', '新能源汽车', '储能'],
+    '医疗器械':     ['医疗器械', '生物医药'],
+    '创新药':       ['创新药', '生物医药'],
+    '生物医药':     ['生物医药', '创新药', '基因检测'],
+    '基因检测':     ['基因检测', '生物医药'],
+    '数字经济':     ['数字经济', '云计算', '人工智能'],
+    '云计算':       ['云计算', '数字经济', '人工智能'],
+    '网络安全':     ['网络安全', '信创国产化', '数字经济'],
+    '信创国产化':   ['信创国产化', '网络安全', '半导体芯片'],
+    '军工国防':     ['军工国防', '航天航空', '无人机'],
+    '航天航空':     ['航天航空', '军工国防'],
+    '无人机':       ['无人机', '军工国防', '航天航空'],
+    '消费电子':     ['消费电子', '半导体芯片', '人工智能'],
+    '智能制造':     ['智能制造', '工业机器人', '人工智能'],
+    '工业机器人':   ['工业机器人', '智能制造', '人工智能'],
+    '自动驾驶':     ['自动驾驶', '新能源汽车', '人工智能'],
+    '房地产':       ['房地产', '建筑建材'],
+    '建筑建材':     ['建筑建材', '房地产'],
+    '物业管理':     ['物业管理', '房地产'],
+    '银行金融':     ['银行金融', '证券', '保险'],
+    '证券':         ['证券', '银行金融'],
+    '保险':         ['保险', '银行金融'],
+    '期货':         ['期货', '证券', '黄金贵金属'],
+    '煤炭能源':     ['煤炭能源', '石油天然气'],
+    '石油天然气':   ['石油天然气', '煤炭能源', '化工材料'],
+    '化工材料':     ['化工材料', '石油天然气'],
+    '钢铁有色':     ['钢铁有色', '黄金贵金属'],
+    '黄金贵金属':   ['黄金贵金属', '钢铁有色'],
+    '农业食品':     ['农业食品'],
+    '游戏传媒':     ['游戏传媒', '数字经济'],
+  };
+
+  // ── 概念芯片初始化 ─────────────────────────────────────────────────────────
+  (function initConceptChips() {
+    const wrap = document.getElementById('concept-chips');
+    wrap.innerHTML = CONCEPTS.map(c =>
+      `<span class="concept-chip" data-concept="${escHtml(c)}" onclick="toggleConcept('${c.replace(/'/g,"\\'")}')">` +
+      `${escHtml(c)}</span>`
+    ).join('');
+  })();
+
+  function toggleConcept(name) {
+    if (selectedConcepts.has(name)) {
+      selectedConcepts.delete(name);
+    } else {
+      selectedConcepts.add(name);
+    }
+    document.querySelectorAll('.concept-chip').forEach(el => {
+      el.classList.toggle('active', selectedConcepts.has(el.dataset.concept));
+    });
+    runConceptFilter();
+  }
+
+  // ── 主题芯片 ───────────────────────────────────────────────────────────────
+  document.getElementById('topicChips').querySelectorAll('.chip').forEach(chip => {
+    chip.addEventListener('click', () => {
+      const val = chip.dataset.val;
+      if (val === '全部') {
+        selectedTopics.clear();
+      } else {
+        selectedTopics.has(val) ? selectedTopics.delete(val) : selectedTopics.add(val);
+      }
+      syncChips();
+      applyFilters();
+    });
+  });
+
+  function syncChips() {
+    document.getElementById('topicChips').querySelectorAll('.chip').forEach(chip => {
+      const val = chip.dataset.val;
+      chip.classList.toggle('active',
+        val === '全部' ? selectedTopics.size === 0 : selectedTopics.has(val));
+    });
+  }
+
+  // ── 工具 ──────────────────────────────────────────────────────────────────
+  function fmtTime(iso) {
+    if (!iso) return '';
+    try {
+      const d = new Date(iso);
+      return `${String(d.getMonth()+1).padStart(2,'0')}-${String(d.getDate()).padStart(2,'0')} `
+           + `${String(d.getHours()).padStart(2,'0')}:${String(d.getMinutes()).padStart(2,'0')}`;
+    } catch { return iso.slice(0,16); }
+  }
+
+  function topicBadgeClass(t) {
+    const map = {宏观政策:'badge-宏观政策',行业动态:'badge-行业动态',
+                 个股公司:'badge-个股公司',市场资金:'badge-市场资金'};
+    return 'badge ' + (map[t] || 'badge-topic-其他');
+  }
+
+  function sourceBadgeClass(src) {
+    const map = { '网页': 'badge-web-src', '雪球': 'badge-xq-src', '公众号': 'badge-wc-src' };
+    return 'badge ' + (map[src] || 'badge-topic-其他');
+  }
+
+  function cardHtml(a, showSource = false) {
+    const kbBadge  = a.kb_matched ? `<span class="badge badge-kb">KB</span>` : '';
+    const topic    = a.topic_label || '其他';
+    const srcType  = a.source_type || a.source_label || '';
+    const srcBadge = showSource
+      ? `<span class="${sourceBadgeClass(srcType)}">${escHtml(srcType)}</span>`
+      : '';
+    return `
+    <div class="article-card card" data-id="${escHtml(a.id)}" onclick="openModal('${a.id.replace(/'/g,"\\'")}')">
+      <div class="card-badges">
+        <span class="${topicBadgeClass(topic)}">${topic}</span>
+        ${srcBadge}
+        ${kbBadge}
+      </div>
+      <div class="card-title">${escHtml(a.title || '（无标题）')}</div>
+      <div class="card-summary">${escHtml(a.summary || '')}</div>
+      <div class="card-footer">
+        <span>${escHtml(a.source_sub || '')}</span>
+        <span>${fmtTime(a.published_at)}</span>
+      </div>
+    </div>`;
+  }
+
+  function escHtml(s) {
+    return String(s)
+      .replace(/&/g,'&amp;').replace(/</g,'&lt;')
+      .replace(/>/g,'&gt;').replace(/"/g,'&quot;');
+  }
+
+  // ── 渲染面板 ──────────────────────────────────────────────────────────────
+  function renderPanel(listId, cntId, articles, showSource = false) {
+    articles.forEach(a => { articleMap[a.id] = a; });
+    const listEl = document.getElementById(listId);
+    const cntEl  = document.getElementById(cntId);
+    cntEl.textContent = `${articles.length} 条`;
+
+    if (!articles.length) {
+      listEl.innerHTML = '<div class="empty">暂无数据</div>';
+      return;
+    }
+
+    // 每次都完整渲染，确保显示正确
+    listEl.innerHTML = articles.map(a => cardHtml(a, showSource)).join('');
+  }
+
+  // ── 过滤主面板（主题筛选） ─────────────────────────────────────────────────
+  function applyFilters() {
+    function filter(src) {
+      let list = allArticles.filter(a =>
+        a.source_type === src || a.source_label === src
+      );
+      if (selectedTopics.size > 0)
+        list = list.filter(a => selectedTopics.has(a.topic_label || '其他'));
+      return list;
+    }
+    renderPanel('list-web',    'cnt-web',    filter('网页'));
+    renderPanel('list-xueqiu', 'cnt-xueqiu', filter('雪球'));
+    renderPanel('list-wechat', 'cnt-wechat', filter('公众号'));
+  }
+
+  // ── AI 筛选 ───────────────────────────────────────────────────────────────
+  async function aiValidate(articles, filterValue, filterType) {
+    const uncached = articles.filter(a => !(`${filterType}:${filterValue}:${a.id}` in aiCache));
+
+    if (uncached.length > 0) {
+      const payload = {
+        articles: uncached.map(a => ({
+          id:             a.id,
+          title:          a.title   || '',
+          content:        (a.content || '').slice(0, 300),
+          industry_label: a.industry_label || '其他',
+        })),
+        filter_value: filterValue,
+        filter_type:  filterType,
+      };
+      try {
+        const resp = await fetch('/api/ai-filter', {
+          method:  'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body:    JSON.stringify(payload),
+        });
+        const data = await resp.json();
+        const matched = new Set(data.matched_ids || []);
+        uncached.forEach(a => {
+          aiCache[`${filterType}:${filterValue}:${a.id}`] = matched.has(a.id);
+        });
+      } catch {
+        // AI不可用时保留全部候选
+        uncached.forEach(a => {
+          aiCache[`${filterType}:${filterValue}:${a.id}`] = true;
+        });
+      }
+    }
+
+    return articles.filter(a => aiCache[`${filterType}:${filterValue}:${a.id}`] === true);
+  }
+
+  // ── A股概念筛选 ───────────────────────────────────────────────────────────
+  async function runConceptFilter() {
+    if (selectedConcepts.size === 0) {
+      document.getElementById('list-concept').innerHTML = '<div class="empty">请从上方选择概念</div>';
+      document.getElementById('cnt-concept').textContent = '-';
+      return;
+    }
+
+    const statusEl = document.getElementById('ai-status-concept');
+    statusEl.style.display = '';
+    document.getElementById('cnt-concept').textContent = '…';
+
+    const matchedMap = new Map();   // id → article，去重
+
+    for (const concept of selectedConcepts) {
+      // 前端先按行业预过滤，大幅减少需要AI验证的文章数量
+      const targetIndustries = CONCEPT_TO_INDUSTRIES[concept] || [];
+      const candidates = targetIndustries.length > 0
+        ? allArticles.filter(a => targetIndustries.includes(a.industry_label || '其他'))
+        : allArticles;
+
+      console.log(`[概念筛选] ${concept} → 行业 ${targetIndustries.join(',')} → ${allArticles.length} 篇预过滤为 ${candidates.length} 篇`);
+
+      // 对预过滤后的候选文章进行AI严格验证
+      const matches = await aiValidate(candidates, concept, 'concept');
+      for (const a of matches) {
+        if (!matchedMap.has(a.id)) matchedMap.set(a.id, a);
+      }
+    }
+
+    statusEl.style.display = 'none';
+    const result = [...matchedMap.values()].sort(
+      (a, b) => new Date(b.published_at) - new Date(a.published_at)
+    );
+    renderPanel('list-concept', 'cnt-concept', result, true);
+  }
+
+  // ── 关键词搜索 ────────────────────────────────────────────────────────────
+  async function runKeywordSearch() {
+    const kw = document.getElementById('kwInput').value.trim();
+    if (!kw) {
+      document.getElementById('list-keyword').innerHTML = '<div class="empty">输入关键词后搜索</div>';
+      document.getElementById('cnt-keyword').textContent = '-';
+      return;
+    }
+
+    const statusEl = document.getElementById('ai-status-keyword');
+    statusEl.style.display = '';
+    document.getElementById('cnt-keyword').textContent = '…';
+
+    // 文本预筛（低成本），再让 AI 二次确认
+    const lkw = kw.toLowerCase();
+    const candidates = allArticles.filter(a =>
+      (a.title   || '').toLowerCase().includes(lkw) ||
+      (a.content || '').toLowerCase().includes(lkw)
+    );
+
+    // 如果文本匹配为零，把全部文章交给 AI（避免遗漏）
+    const toValidate = candidates.length > 0 ? candidates : allArticles;
+
+    const matched = await aiValidate(toValidate, kw, 'keyword');
+    statusEl.style.display = 'none';
+    renderPanel('list-keyword', 'cnt-keyword', matched, true);
+  }
+
+  // ── 加载（智能更新）─────────────────────────────────────────────────────────
+  async function loadAll() {
+    try {
+      const resp = await fetch(API);
+      const newArticles = await resp.json();
+
+      // 检查是否有变化（通过ID集合对比）
+      const newIds = new Set(newArticles.map(a => a.id));
+      const hasChanged = currentArticleIds.size !== newIds.size ||
+                        newArticles.some(a => !currentArticleIds.has(a.id));
+
+      if (!hasChanged && currentArticleIds.size > 0) {
+        // 无变化，只更新时间戳
+        document.getElementById('metaInfo').textContent =
+          `最后更新 ${new Date().toLocaleTimeString('zh-CN')}`;
+        return;
+      }
+
+      // 有变化，更新数据并重新渲染
+      allArticles = newArticles;
+      currentArticleIds = newIds;
+
+      document.getElementById('metaInfo').textContent =
+        `最后更新 ${new Date().toLocaleTimeString('zh-CN')} ✨`;
+
+      // 完整重新渲染所有面板
+      applyFilters();
+
+      // 数据更新后重跑活跃筛选
+      if (selectedConcepts.size > 0) runConceptFilter();
+      const kw = document.getElementById('kwInput').value.trim();
+      if (kw) runKeywordSearch();
+
+    } catch(e) {
+      ['list-web','list-xueqiu','list-wechat'].forEach(id => {
+        document.getElementById(id).innerHTML =
+          `<div class="empty">加载失败：${e.message}</div>`;
+      });
+    }
+  }
+
+  async function triggerRefresh() {
+    try { await fetch('/api/refresh', {method:'POST'}); } catch {}
+    setTimeout(loadAll, 3000);
+  }
+
+  // ── 暂停/开始自动刷新 ──────────────────────────────────────────────────────
+  let isPaused = false;
+
+  async function togglePause() {
+    const btn = document.getElementById('pauseBtn');
+    try {
+      if (isPaused) {
+        await fetch('/api/resume', {method:'POST'});
+        isPaused = false;
+        btn.textContent = '暂停';
+        btn.style.background = '';
+        // 恢复前端自动刷新
+        if (!autoTimer) {
+          autoTimer = setInterval(loadAll, 15 * 1000);
+        }
+      } else {
+        await fetch('/api/pause', {method:'POST'});
+        isPaused = true;
+        btn.textContent = '开始';
+        btn.style.background = '#4ecb71';
+        // 停止前端自动刷新
+        if (autoTimer) {
+          clearInterval(autoTimer);
+          autoTimer = null;
+        }
+      }
+    } catch (e) {
+      console.error('切换暂停状态失败:', e);
+    }
+  }
+
+  async function checkPauseStatus() {
+    try {
+      const resp = await fetch('/api/status');
+
+      // 检查是否有管理权限（本地访问）
+      const hasAdminAccess = resp.status !== 403;
+
+      if (hasAdminAccess) {
+        // 显示管理按钮
+        document.getElementById('pauseBtn').style.display = '';
+        document.getElementById('refreshBtn').style.display = '';
+        document.getElementById('adminBtn').style.display = '';
+
+        const data = await resp.json();
+        isPaused = data.paused;
+        const btn = document.getElementById('pauseBtn');
+        if (isPaused) {
+          btn.textContent = '开始';
+          btn.style.background = '#4ecb71';
+          // 如果已暂停，停止前端自动刷新
+          if (autoTimer) {
+            clearInterval(autoTimer);
+            autoTimer = null;
+          }
+        } else {
+          btn.textContent = '暂停';
+          btn.style.background = '';
+          // 如果未暂停，启动前端自动刷新
+          if (!autoTimer) {
+            autoTimer = setInterval(loadAll, 15 * 1000);
+            loadAll();  // 立即加载一次
+          }
+        }
+      } else {
+        // 外部访问，隐藏管理按钮，直接启动自动刷新
+        if (!autoTimer) {
+          autoTimer = setInterval(loadAll, 15 * 1000);
+          loadAll();
+        }
+      }
+    } catch (e) {
+      console.error('初始化失败:', e);
+      // 出错时也启动自动刷新
+      if (!autoTimer) {
+        autoTimer = setInterval(loadAll, 15 * 1000);
+        loadAll();
+      }
+    }
+  }
+
+  checkPauseStatus();
+
+  document.getElementById('kwInput').addEventListener('keydown', e => {
+    if (e.key === 'Enter') runKeywordSearch();
+  });
+
+  // ── 浮窗 ─────────────────────────────────────────────────────────────────
+  function sanitizeHtml(html) {
+    const doc = new DOMParser().parseFromString(html, 'text/html');
+    doc.querySelectorAll('script, style, iframe, object, embed, form').forEach(el => el.remove());
+    doc.querySelectorAll('*').forEach(el => {
+      if (el.style.visibility === 'hidden') el.style.visibility = '';
+      if (parseFloat(el.style.opacity) === 0) el.style.opacity = '';
+      [...el.attributes].forEach(attr => {
+        if (attr.name.startsWith('on')) el.removeAttribute(attr.name);
+      });
+      if (el.tagName === 'IMG') {
+        const ds  = el.getAttribute('data-src');
+        const src = el.getAttribute('src') || '';
+        if (ds && (!src || src.startsWith('data:'))) el.setAttribute('src', ds);
+      }
+    });
+    return doc.body.innerHTML;
+  }
+
+  function setModalContent(el, html, text) {
+    if (html) {
+      el.classList.remove('plain');
+      el.innerHTML = sanitizeHtml(html);
+    } else {
+      el.classList.add('plain');
+      el.textContent = text;
+    }
+  }
+
+  async function openModal(id) {
+    const a = articleMap[id];
+    if (!a) return;
+
+    const topic = a.topic_label || '其他';
+    const topicEl = document.getElementById('modal-badge-topic');
+    topicEl.className = 'badge ' + topicBadgeClass(topic);
+    topicEl.textContent = topic;
+
+    document.getElementById('modal-badge-kb').style.display = a.kb_matched ? '' : 'none';
+    document.getElementById('modal-title').textContent  = a.title || '（无标题）';
+    document.getElementById('modal-source').textContent = a.source_sub || a.source_type || '';
+    document.getElementById('modal-time').textContent   = fmtTime(a.published_at);
+
+    const linkEl = document.getElementById('modal-link');
+    if (a.url) { linkEl.href = a.url; linkEl.classList.add('visible'); }
+    else        { linkEl.classList.remove('visible'); }
+
+    const contentEl = document.getElementById('modal-content');
+    const stored    = a.content || a.summary || '';
+
+    document.getElementById('modal-body').scrollTop = 0;
+    document.getElementById('modal-backdrop').classList.add('show');
+
+    if (a.content_html) {
+      setModalContent(contentEl, a.content_html, '');
+      return;
+    }
+
+    if (a.source_type === '公众号' && a.url && stored.length < 300) {
+      setModalContent(contentEl, '', stored || '正在加载原文…');
+      try {
+        const resp = await fetch(`/api/fetch-content?url=${encodeURIComponent(a.url)}`);
+        const data = await resp.json();
+        if (data.content_html && data.content_html.length > 50) {
+          setModalContent(contentEl, data.content_html, '');
+        } else {
+          setModalContent(contentEl, '', stored || '（内容获取失败，请点击查看原文）');
+        }
+      } catch {
+        setModalContent(contentEl, '', stored);
+      }
+      return;
+    }
+
+    setModalContent(contentEl, '', stored);
+  }
+
+  function closeModal() {
+    document.getElementById('modal-backdrop').classList.remove('show');
+  }
+
+  function handleBackdropClick(e) {
+    if (e.target === document.getElementById('modal-backdrop')) closeModal();
+  }
+
+  document.addEventListener('keydown', e => {
+    if (e.key === 'Escape') closeModal();
+  });
+
+  function adjustBoardHeight() {
+    const headerH = document.getElementById('header').offsetHeight;
+    document.getElementById('board').style.height = `calc(100vh - ${headerH}px)`;
+  }
+
+  window.addEventListener('resize', adjustBoardHeight);
+  adjustBoardHeight();
+
+  // 初始化：先检查暂停状态，再决定是否启动定时器
+  checkPauseStatus();
+</script>
+</body>
+</html>

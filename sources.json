@@ -1,0 +1,41 @@
+{
+  "webpages": [
+    {
+      "url": "https://www.cls.cn/telegraph",
+      "name": "财联社"
+    },
+    {
+      "url": "https://news.10jqka.com.cn/realtimenews.html",
+      "name": "同花顺财经"
+    }
+  ],
+  "xueqiu": [
+    {
+      "id": "1855261132",
+      "name": "私募小韭菜"
+    },
+    {
+      "id": "4185949384",
+      "name": "核心逻辑洞见"
+    },
+    {
+      "id": "1614824153",
+      "name": "医药豹"
+    }
+  ],
+  "wechat": [
+    {
+      "name": "财闻私享"
+    },
+    {
+      "name": "财联社"
+    },
+    {
+      "name": "研讯社"
+    },
+    {
+      "name": "看懂龙头股"
+    }
+  ],
+  "other": []
+}

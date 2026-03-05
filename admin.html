@@ -1,0 +1,448 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>后台管理 — 财联社资讯看板</title>
+  <style>
+    *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+    html, body {
+      min-height: 100%;
+      font-family: -apple-system, BlinkMacSystemFont, "PingFang SC", "Microsoft YaHei", sans-serif;
+      background: #0f1117;
+      color: #e0e0e0;
+    }
+
+    /* ── 顶栏 ── */
+    #header {
+      background: #1a1d2e;
+      border-bottom: 1px solid #2a2d3e;
+      padding: 12px 24px;
+      display: flex;
+      align-items: center;
+      gap: 14px;
+    }
+    .back-link {
+      color: #5b8cff;
+      text-decoration: none;
+      font-size: 13px;
+    }
+    .back-link:hover { color: #7aadff; }
+    #header h1 { font-size: 15px; font-weight: 600; color: #fff; }
+
+    /* ── 主体 ── */
+    #main {
+      padding: 28px 24px;
+      max-width: 1140px;
+      margin: 0 auto;
+    }
+
+    /* ── 三列 ── */
+    .sections {
+      display: grid;
+      grid-template-columns: repeat(3, 1fr);
+      gap: 18px;
+      margin-bottom: 24px;
+    }
+    @media (max-width: 820px) { .sections { grid-template-columns: 1fr; } }
+
+    .section {
+      background: #1a1d2e;
+      border: 1px solid #222536;
+      border-radius: 10px;
+      padding: 16px;
+      display: flex;
+      flex-direction: column;
+    }
+
+    /* ── section 头 ── */
+    .sec-header {
+      display: flex;
+      align-items: center;
+      gap: 8px;
+      margin-bottom: 14px;
+    }
+    .sec-stripe { width: 3px; height: 16px; border-radius: 2px; flex-shrink: 0; }
+    .stripe-web    { background: #e08030; }
+    .stripe-xueqiu { background: #f05050; }
+    .stripe-wechat { background: #4ecb71; }
+    .sec-title { font-size: 14px; font-weight: 600; color: #ccc; }
+    .sec-hint  { font-size: 11px; color: #444; margin-left: auto; }
+
+    /* ── 来源列表 ── */
+    .source-list { flex: 1; margin-bottom: 12px; min-height: 44px; }
+    .source-item {
+      display: flex;
+      align-items: flex-start;
+      gap: 8px;
+      padding: 7px 10px;
+      border-radius: 6px;
+      background: #252836;
+      margin-bottom: 6px;
+    }
+    .source-text { flex: 1; font-size: 12px; color: #ccc; word-break: break-all; line-height: 1.5; }
+    .source-sub  { font-size: 11px; color: #555; }
+    .source-fields { flex: 1; display: flex; flex-direction: column; gap: 4px; min-width: 0; }
+    .name-edit {
+      background: transparent;
+      border: none;
+      border-bottom: 1px solid #2e3148;
+      color: #ddd;
+      font-size: 12px;
+      font-family: inherit;
+      width: 100%;
+      padding: 2px 2px;
+      outline: none;
+    }
+    .name-edit:focus { border-bottom-color: #5b8cff; }
+    .name-edit::placeholder { color: #444; }
+    .del-btn {
+      flex-shrink: 0;
+      background: none;
+      border: none;
+      color: #444;
+      font-size: 17px;
+      cursor: pointer;
+      padding: 0;
+      line-height: 1;
+      margin-top: 1px;
+    }
+    .del-btn:hover { color: #e05050; }
+    .empty-tip { font-size: 12px; color: #444; text-align: center; padding: 12px 0; }
+
+    /* ── 添加行 ── */
+    .add-row { display: flex; gap: 6px; margin-bottom: 14px; }
+    .add-input {
+      flex: 1;
+      background: #252836;
+      border: 1px solid #3a3d4e;
+      border-radius: 6px;
+      color: #e0e0e0;
+      padding: 6px 10px;
+      font-size: 12px;
+      outline: none;
+      min-width: 0;
+    }
+    .add-input:focus { border-color: #5b8cff; }
+    .add-btn {
+      background: #2d5be3;
+      color: #fff;
+      border: none;
+      border-radius: 6px;
+      padding: 6px 12px;
+      font-size: 12px;
+      cursor: pointer;
+      white-space: nowrap;
+      flex-shrink: 0;
+    }
+    .add-btn:hover { background: #3d6bf5; }
+
+    /* ── 刷新间隔 ── */
+    .interval-row {
+      display: flex;
+      align-items: center;
+      gap: 8px;
+      padding-top: 12px;
+      border-top: 1px solid #1e2136;
+      margin-top: auto;
+    }
+    .interval-label { font-size: 12px; color: #666; flex: 1; }
+    .interval-input {
+      width: 64px;
+      background: #252836;
+      border: 1px solid #3a3d4e;
+      border-radius: 6px;
+      color: #e0e0e0;
+      padding: 5px 8px;
+      font-size: 12px;
+      outline: none;
+      text-align: center;
+    }
+    .interval-input:focus { border-color: #5b8cff; }
+    .interval-unit { font-size: 12px; color: #555; }
+    .interval-unit-select {
+      background: #252836;
+      border: 1px solid #3a3d4e;
+      border-radius: 6px;
+      color: #e0e0e0;
+      padding: 5px 8px;
+      font-size: 12px;
+      outline: none;
+      cursor: pointer;
+    }
+    .interval-unit-select:focus { border-color: #5b8cff; }
+
+    /* ── 保存栏 ── */
+    .save-bar {
+      display: flex;
+      justify-content: flex-end;
+      align-items: center;
+      gap: 14px;
+    }
+    .save-msg { font-size: 13px; color: #4ecb71; opacity: 0; transition: opacity .3s; }
+    .save-msg.show { opacity: 1; }
+    .save-btn {
+      background: #2d5be3;
+      color: #fff;
+      border: none;
+      border-radius: 8px;
+      padding: 10px 30px;
+      font-size: 14px;
+      font-weight: 600;
+      cursor: pointer;
+    }
+    .save-btn:hover { background: #3d6bf5; }
+  </style>
+</head>
+<body>
+
+<div id="header">
+  <a class="back-link" href="/">← 返回看板</a>
+  <h1>后台管理</h1>
+</div>
+
+<div id="main">
+  <div class="sections">
+
+    <!-- 网页 -->
+    <div class="section">
+      <div class="sec-header">
+        <div class="sec-stripe stripe-web"></div>
+        <span class="sec-title">网页</span>
+        <span class="sec-hint">输入完整 URL</span>
+      </div>
+      <div class="source-list" id="list-webpages"></div>
+      <div class="add-row">
+        <input class="add-input" id="inp-webpages" type="text" placeholder="https://example.com/article">
+        <button class="add-btn" onclick="addSource('webpages')">添加</button>
+      </div>
+      <div class="interval-row">
+        <span class="interval-label">自动刷新间隔</span>
+        <input class="interval-input" id="iv-webpages" type="number" min="1" value="30">
+        <select class="interval-unit-select" id="unit-webpages">
+          <option value="60">分钟</option>
+          <option value="1">秒</option>
+        </select>
+      </div>
+    </div>
+
+    <!-- 雪球 -->
+    <div class="section">
+      <div class="sec-header">
+        <div class="sec-stripe stripe-xueqiu"></div>
+        <span class="sec-title">雪球</span>
+        <span class="sec-hint">输入用户主页 URL 或用户 ID</span>
+      </div>
+      <div class="source-list" id="list-xueqiu"></div>
+      <div class="add-row">
+        <input class="add-input" id="inp-xueqiu" type="text" placeholder="https://xueqiu.com/8778887955 或 8778887955">
+        <button class="add-btn" onclick="addSource('xueqiu')">添加</button>
+      </div>
+      <div class="interval-row">
+        <span class="interval-label">自动刷新间隔</span>
+        <input class="interval-input" id="iv-xueqiu" type="number" min="1" value="10">
+        <select class="interval-unit-select" id="unit-xueqiu">
+          <option value="60">分钟</option>
+          <option value="1">秒</option>
+        </select>
+      </div>
+    </div>
+
+    <!-- 公众号 -->
+    <div class="section">
+      <div class="sec-header">
+        <div class="sec-stripe stripe-wechat"></div>
+        <span class="sec-title">公众号</span>
+        <span class="sec-hint">输入公众号名称</span>
+      </div>
+      <div class="source-list" id="list-wechat"></div>
+      <div class="add-row">
+        <input class="add-input" id="inp-wechat" type="text" placeholder="财联社">
+        <button class="add-btn" onclick="addSource('wechat')">添加</button>
+      </div>
+      <div class="interval-row">
+        <span class="interval-label">自动刷新间隔</span>
+        <input class="interval-input" id="iv-wechat" type="number" min="1" value="60">
+        <select class="interval-unit-select" id="unit-wechat">
+          <option value="60">分钟</option>
+          <option value="1">秒</option>
+        </select>
+      </div>
+    </div>
+
+  </div>
+
+  <div class="save-bar">
+    <span class="save-msg" id="save-msg">✓ 已保存</span>
+    <button class="save-btn" onclick="save()">保存设置</button>
+  </div>
+</div>
+
+<script>
+  let sources  = { webpages: [], xueqiu: [], wechat: [] };
+  let settings = { intervals: { webpages: 30, xueqiu: 10, wechat: 60 } };
+
+  // ── 初始化加载 ──────────────────────────────────────────────────────────────
+  async function load() {
+    const [srcRes, setRes] = await Promise.all([
+      fetch('/api/sources').then(r => r.json()),
+      fetch('/api/settings').then(r => r.json()),
+    ]);
+    sources  = srcRes;
+    settings = setRes;
+
+    renderList('webpages');
+    renderList('xueqiu');
+    renderList('wechat');
+
+    const iv = settings.intervals || {};
+    // 间隔以秒为单位存储，显示时自动选择合适单位
+    setInterval('webpages', iv.webpages ?? 1800);
+    setInterval('xueqiu',   iv.xueqiu   ?? 600);
+    setInterval('wechat',   iv.wechat   ?? 3600);
+  }
+
+  function setInterval(key, seconds) {
+    const input = document.getElementById(`iv-${key}`);
+    const unit  = document.getElementById(`unit-${key}`);
+    if (seconds >= 60 && seconds % 60 === 0) {
+      input.value = seconds / 60;
+      unit.value = '60';
+    } else {
+      input.value = seconds;
+      unit.value = '1';
+    }
+  }
+
+  // ── 渲染列表 ────────────────────────────────────────────────────────────────
+  function itemLabel(key, item, i) {
+    if (key === 'webpages') {
+      const name = item.name || '';
+      const url  = item.url  || '';
+      return `<div class="source-fields">
+        <input class="name-edit" value="${escHtml(name)}" placeholder="输入名称…" onchange="editName('webpages', ${i}, this.value)">
+        <span class="source-sub">${escHtml(url)}</span>
+      </div>`;
+    }
+    if (key === 'xueqiu') {
+      const id   = item.id   || '';
+      const name = item.name || '';
+      return `<div class="source-fields">
+        <input class="name-edit" value="${escHtml(name)}" placeholder="输入名称…" onchange="editName('xueqiu', ${i}, this.value)">
+        <span class="source-sub">ID: ${escHtml(id)}</span>
+      </div>`;
+    }
+    return `<span class="source-text">${escHtml(item.name || JSON.stringify(item))}</span>`;
+  }
+
+  function renderList(key) {
+    const list = sources[key] || [];
+    const el   = document.getElementById(`list-${key}`);
+    if (!list.length) {
+      el.innerHTML = '<div class="empty-tip">暂无配置</div>';
+      return;
+    }
+    el.innerHTML = list.map((item, i) => `
+      <div class="source-item">
+        ${itemLabel(key, item, i)}
+        <button class="del-btn" onclick="del('${key}', ${i})" title="删除">×</button>
+      </div>
+    `).join('');
+  }
+
+  // ── 添加 ────────────────────────────────────────────────────────────────────
+  async function addSource(key) {
+    const val = document.getElementById(`inp-${key}`).value.trim();
+    if (!val) return;
+
+    let item;
+    if (key === 'webpages') {
+      let name = '';
+      try { name = new URL(val).hostname; } catch {}
+      item = { url: val, name };
+    } else if (key === 'xueqiu') {
+      // 支持完整 URL（含 /u/ 前缀）或纯数字 ID
+      let id = '', name = '';
+      const m = val.match(/xueqiu\.com\/(?:u\/)?(\d+)/);
+      if (m) {
+        id = m[1];
+      } else if (/^\d+$/.test(val)) {
+        id = val;
+      } else {
+        // 纯文字名称（ID 未知），无效配置
+        alert('请输入雪球用户主页 URL（如 https://xueqiu.com/u/1234567890）或纯数字 ID');
+        return;
+      }
+
+      // 自动获取用户昵称
+      const inputEl = document.getElementById(`inp-${key}`);
+      const btnEl = inputEl.nextElementSibling;
+      btnEl.disabled = true;
+      btnEl.textContent = '获取中…';
+
+      try {
+        const resp = await fetch(`/api/xueqiu-user?id=${id}`);
+        const data = await resp.json();
+        name = data.name || '';
+      } catch (e) {
+        console.error('获取用户昵称失败:', e);
+        name = '';
+      }
+
+      btnEl.disabled = false;
+      btnEl.textContent = '添加';
+
+      item = { id, name };
+    } else {
+      item = { name: val };
+    }
+
+    if (!sources[key]) sources[key] = [];
+    sources[key].push(item);
+    renderList(key);
+    document.getElementById(`inp-${key}`).value = '';
+  }
+
+  function del(key, idx) {
+    sources[key].splice(idx, 1);
+    renderList(key);
+  }
+
+  function editName(key, idx, value) {
+    if (sources[key] && sources[key][idx]) {
+      sources[key][idx].name = value.trim();
+    }
+  }
+
+  // ── 保存 ────────────────────────────────────────────────────────────────────
+  async function save() {
+    // 转换为秒存储
+    settings.intervals = {
+      webpages: parseInt(document.getElementById('iv-webpages').value) * parseInt(document.getElementById('unit-webpages').value) || 1800,
+      xueqiu:   parseInt(document.getElementById('iv-xueqiu').value)   * parseInt(document.getElementById('unit-xueqiu').value)   || 600,
+      wechat:   parseInt(document.getElementById('iv-wechat').value)   * parseInt(document.getElementById('unit-wechat').value)   || 3600,
+    };
+    await Promise.all([
+      fetch('/api/sources',  { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(sources)  }),
+      fetch('/api/settings', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(settings) }),
+    ]);
+    const msg = document.getElementById('save-msg');
+    msg.classList.add('show');
+    setTimeout(() => msg.classList.remove('show'), 2500);
+  }
+
+  // ── 回车添加 ────────────────────────────────────────────────────────────────
+  ['webpages', 'xueqiu', 'wechat'].forEach(key => {
+    document.getElementById(`inp-${key}`).addEventListener('keydown', e => {
+      if (e.key === 'Enter') addSource(key);
+    });
+  });
+
+  function escHtml(s) {
+    return String(s).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;');
+  }
+
+  load();
+</script>
+</body>
+</html>
