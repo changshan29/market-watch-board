@@ -61,6 +61,9 @@ function requireLocalAccess(req, res) {
 // ── 自动刷新调度（统一刷新，使用最小间隔）──────────────────────────────────
 let refreshTimer = null;
 let isPaused = false;
+let serverStartTime = new Date().toISOString();
+let lastScrapeTime = null;
+let lastScrapeStatus = null;
 
 function scheduleAutoRefresh() {
   if (refreshTimer) clearTimeout(refreshTimer);
@@ -72,9 +75,16 @@ function scheduleAutoRefresh() {
 
   refreshTimer = setTimeout(() => {
     console.log('[auto] running full scraper...');
+    lastScrapeTime = new Date().toISOString();
+    lastScrapeStatus = 'running';
     exec('python3 run_cailianshe_2.py --no-kb --fast', { cwd: __dirname }, (err) => {
-      if (err) console.error('[auto] error:', err.message);
-      else     console.log('[auto] done');
+      if (err) {
+        console.error('[auto] error:', err.message);
+        lastScrapeStatus = 'error: ' + err.message;
+      } else {
+        console.log('[auto] done');
+        lastScrapeStatus = 'success';
+      }
       scheduleAutoRefresh();
     });
   }, minSec * 1000);
@@ -96,9 +106,16 @@ function resumeAutoRefresh() {
 
 // 启动时立即执行一次爬取
 console.log('[startup] running initial scrape...');
+lastScrapeTime = new Date().toISOString();
+lastScrapeStatus = 'running (startup)';
 exec('python3 run_cailianshe_2.py --no-kb --fast', { cwd: __dirname }, (err) => {
-  if (err) console.error('[startup] error:', err.message);
-  else     console.log('[startup] initial scrape done');
+  if (err) {
+    console.error('[startup] error:', err.message);
+    lastScrapeStatus = 'error: ' + err.message;
+  } else {
+    console.log('[startup] initial scrape done');
+    lastScrapeStatus = 'success';
+  }
   scheduleAutoRefresh();
 });
 
@@ -191,6 +208,23 @@ const server = http.createServer((req, res) => {
     if (!requireLocalAccess(req, res)) return;
     res.writeHead(200, { 'Content-Type': 'application/json; charset=utf-8', 'Access-Control-Allow-Origin': '*' });
     res.end(JSON.stringify(readJson(SETTINGS_FILE, DEFAULT_SETTINGS)));
+    return;
+  }
+
+  // GET /api/debug - 调试信息（公开）
+  if (req.method === 'GET' && url.pathname === '/api/debug') {
+    const articles = readArticles();
+    const latestArticle = articles.length > 0 ? articles[0] : null;
+    res.writeHead(200, { 'Content-Type': 'application/json; charset=utf-8', 'Access-Control-Allow-Origin': '*' });
+    res.end(JSON.stringify({
+      serverStartTime,
+      lastScrapeTime,
+      lastScrapeStatus,
+      isPaused,
+      articlesCount: articles.length,
+      latestArticleTime: latestArticle ? latestArticle.published_at : null,
+      latestArticleTitle: latestArticle ? latestArticle.title : null,
+    }));
     return;
   }
 
