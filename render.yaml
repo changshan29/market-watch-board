@@ -1,0 +1,13 @@
+services:
+  - type: web
+    name: market-watch-board
+    env: docker
+    dockerfilePath: ./Dockerfile
+    plan: free
+    region: oregon
+    healthCheckPath: /api/debug
+    envVars:
+      - key: NODE_ENV
+        value: production
+      - key: PORT
+        value: 3220
