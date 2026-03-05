@@ -1,0 +1,12 @@
+node_modules
+__pycache__
+*.pyc
+*.pyo
+.pytest_cache
+.git
+.gitignore
+.DS_Store
+*.log
+data/articles.json
+.vscode
+.idea
