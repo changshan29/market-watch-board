@@ -30,6 +30,49 @@
     .back-link:hover { color: #7aadff; }
     #header h1 { font-size: 15px; font-weight: 600; color: #fff; }
 
+    /* ── 控制面板 ── */
+    .control-panel {
+      background: #1a1d2e;
+      border: 1px solid #222536;
+      border-radius: 10px;
+      padding: 16px;
+      margin-bottom: 24px;
+      display: flex;
+      align-items: center;
+      gap: 16px;
+      flex-wrap: wrap;
+    }
+    .control-title {
+      font-size: 14px;
+      font-weight: 600;
+      color: #ccc;
+      margin-right: auto;
+    }
+    .control-status {
+      font-size: 13px;
+      color: #888;
+      padding: 4px 12px;
+      border-radius: 6px;
+      background: #252836;
+    }
+    .control-status.running { color: #4ecb71; background: #1a3a2a; }
+    .control-status.paused { color: #f0a050; background: #3a2a1a; }
+    .control-btn {
+      background: #2d5be3;
+      color: #fff;
+      border: none;
+      border-radius: 6px;
+      padding: 8px 16px;
+      font-size: 13px;
+      cursor: pointer;
+      transition: background 0.2s;
+    }
+    .control-btn:hover { background: #3d6bf5; }
+    .control-btn.pause { background: #f0a050; }
+    .control-btn.pause:hover { background: #ffc070; }
+    .control-btn.resume { background: #4ecb71; }
+    .control-btn.resume:hover { background: #6edc91; }
+
     /* ── 主体 ── */
     #main {
       padding: 28px 24px;
@@ -202,6 +245,14 @@
 </div>
 
 <div id="main">
+  <!-- 控制面板 -->
+  <div class="control-panel">
+    <span class="control-title">系统控制</span>
+    <span class="control-status" id="systemStatus">加载中...</span>
+    <button class="control-btn pause" id="pauseBtn" onclick="togglePause()">暂停</button>
+    <button class="control-btn" onclick="manualRefresh()">立即刷新</button>
+  </div>
+
   <div class="sections">
 
     <!-- 网页 -->
@@ -300,6 +351,74 @@
     setInterval('webpages', iv.webpages ?? 1800);
     setInterval('xueqiu',   iv.xueqiu   ?? 600);
     setInterval('wechat',   iv.wechat   ?? 3600);
+
+    // 加载系统状态
+    await loadSystemStatus();
+  }
+
+  // ── 系统控制功能 ────────────────────────────────────────────────────────────
+  async function loadSystemStatus() {
+    try {
+      const resp = await fetch('/api/status');
+      const data = await resp.json();
+      updateStatusDisplay(data.paused);
+    } catch (e) {
+      console.error('加载状态失败:', e);
+    }
+  }
+
+  function updateStatusDisplay(isPaused) {
+    const statusEl = document.getElementById('systemStatus');
+    const pauseBtn = document.getElementById('pauseBtn');
+
+    if (isPaused) {
+      statusEl.textContent = '已暂停';
+      statusEl.className = 'control-status paused';
+      pauseBtn.textContent = '恢复';
+      pauseBtn.className = 'control-btn resume';
+    } else {
+      statusEl.textContent = '运行中';
+      statusEl.className = 'control-status running';
+      pauseBtn.textContent = '暂停';
+      pauseBtn.className = 'control-btn pause';
+    }
+  }
+
+  async function togglePause() {
+    const statusEl = document.getElementById('systemStatus');
+    const isPaused = statusEl.classList.contains('paused');
+
+    try {
+      const endpoint = isPaused ? '/api/resume' : '/api/pause';
+      const resp = await fetch(endpoint, { method: 'POST' });
+
+      if (resp.ok) {
+        updateStatusDisplay(!isPaused);
+      } else {
+        alert('操作失败');
+      }
+    } catch (e) {
+      alert('操作失败: ' + e.message);
+    }
+  }
+
+  async function manualRefresh() {
+    const btn = event.target;
+    btn.disabled = true;
+    btn.textContent = '刷新中...';
+
+    try {
+      await fetch('/api/refresh', { method: 'POST' });
+      btn.textContent = '✓ 已触发';
+      setTimeout(() => {
+        btn.disabled = false;
+        btn.textContent = '立即刷新';
+      }, 2000);
+    } catch (e) {
+      alert('刷新失败: ' + e.message);
+      btn.disabled = false;
+      btn.textContent = '立即刷新';
+    }
   }
 
   function setInterval(key, seconds) {
