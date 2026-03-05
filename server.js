@@ -270,28 +270,6 @@ const server = http.createServer((req, res) => {
     return;
   }
 
-  // GET /api/xueqiu-user?id=...
-  if (req.method === 'GET' && url.pathname === '/api/xueqiu-user') {
-    const userId = url.searchParams.get('id');
-    if (!userId) {
-      res.writeHead(400, { 'Content-Type': 'application/json' });
-      res.end(JSON.stringify({ error: 'Missing id parameter' }));
-      return;
-    }
-    execFile('python3', ['-c', `from scrapers.xueqiu import get_user_name; print(get_user_name('${userId}'))`],
-      { cwd: __dirname }, (err, stdout, stderr) => {
-        if (err) {
-          res.writeHead(500, { 'Content-Type': 'application/json' });
-          res.end(JSON.stringify({ name: '', error: stderr }));
-        } else {
-          const name = stdout.trim();
-          res.writeHead(200, { 'Content-Type': 'application/json; charset=utf-8', 'Access-Control-Allow-Origin': '*' });
-          res.end(JSON.stringify({ name }));
-        }
-      });
-    return;
-  }
-
   // POST /api/pause - 仅本地访问
   if (req.method === 'POST' && url.pathname === '/api/pause') {
     if (!requireLocalAccess(req, res)) return;
@@ -314,6 +292,61 @@ const server = http.createServer((req, res) => {
   if (req.method === 'GET' && url.pathname === '/api/status') {
     res.writeHead(200, { 'Content-Type': 'application/json; charset=utf-8', 'Access-Control-Allow-Origin': '*' });
     res.end(JSON.stringify({ paused: isPaused }));
+    return;
+  }
+
+  // GET /api/xueqiu-user?id=xxx - 获取雪球用户名（仅本地访问）
+  if (req.method === 'GET' && url.pathname === '/api/xueqiu-user') {
+    if (!requireLocalAccess(req, res)) return;
+    const userId = url.searchParams.get('id');
+    if (!userId) {
+      res.writeHead(400, { 'Content-Type': 'application/json' });
+      res.end(JSON.stringify({ error: '缺少用户ID' }));
+      return;
+    }
+    const pyScript = `
+from selenium import webdriver
+from selenium.webdriver.chrome.options import Options
+from selenium.webdriver.common.by import By
+from selenium.webdriver.support.ui import WebDriverWait
+from selenium.webdriver.support import expected_conditions as EC
+import sys
+import time
+
+user_id = sys.argv[1]
+
+options = Options()
+options.add_argument('--headless')
+options.add_argument('--no-sandbox')
+options.add_argument('--disable-dev-shm-usage')
+options.add_argument('--disable-gpu')
+options.add_experimental_option("excludeSwitches", ["enable-automation"])
+
+try:
+    driver = webdriver.Chrome(options=options)
+    driver.get(f"https://xueqiu.com/u/{user_id}")
+
+    wait = WebDriverWait(driver, 10)
+    wait.until(EC.presence_of_element_located((By.CSS_SELECTOR, ".timeline__item")))
+    time.sleep(3)
+
+    # 提取用户名
+    name_elem = driver.find_element(By.CSS_SELECTOR, ".user-name")
+    print(name_elem.text.strip())
+
+    driver.quit()
+except Exception:
+    print("")
+    try:
+        driver.quit()
+    except:
+        pass
+`;
+    execFile('python3', ['-c', pyScript, userId], { timeout: 35000, cwd: __dirname }, (err, stdout, stderr) => {
+      const username = stdout.trim();
+      res.writeHead(200, { 'Content-Type': 'application/json; charset=utf-8', 'Access-Control-Allow-Origin': '*' });
+      res.end(JSON.stringify({ name: username || '' }));
+    });
     return;
   }
 

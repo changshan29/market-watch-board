@@ -176,12 +176,31 @@ def fetch(count: int = 20) -> list[dict]:
 
     articles = []
     valid_users = [u for u in xq_users if u.get("id") or u.get("user_id")]
+    sources_updated = False
 
-    for user in valid_users:
+    for i, user in enumerate(valid_users):
         uid = user.get("id") or user.get("user_id")
         items = _fetch_user_with_selenium(str(uid), count)
+
+        # 如果获取到文章且用户名为空，自动更新用户名
+        if items and not user.get("name"):
+            username = items[0].get("source_sub", "")
+            if username and username != "雪球用户":
+                user["name"] = username
+                sources_updated = True
+                print(f"[xueqiu] 自动更新用户名: {uid} -> {username}")
+
         articles.extend(items)
         print(f"[xueqiu] user {uid}: {len(items)} 条")
+
+    # 保存更新后的sources.json
+    if sources_updated:
+        try:
+            raw_sources["xueqiu"] = xq_users
+            SOURCES_FILE.write_text(json.dumps(raw_sources, ensure_ascii=False, indent=2))
+            print("[xueqiu] 已更新 sources.json 中的用户名")
+        except Exception as e:
+            print(f"[xueqiu] 更新 sources.json 失败: {e}")
 
     if not valid_users:
         print("[xueqiu] 用户均无 ID，请在后台添加用户主页 URL 或数字 ID")

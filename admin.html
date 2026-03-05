@@ -445,9 +445,9 @@
     }
     if (key === 'xueqiu') {
       const id   = item.id   || '';
-      const name = item.name || '';
+      const name = item.name || '（首次爬取后自动显示）';
       return `<div class="source-fields">
-        <input class="name-edit" value="${escHtml(name)}" placeholder="输入名称…" onchange="editName('xueqiu', ${i}, this.value)">
+        <input class="name-edit" value="${escHtml(name)}" placeholder="首次爬取后自动显示…" onchange="editName('xueqiu', ${i}, this.value)">
         <span class="source-sub">ID: ${escHtml(id)}</span>
       </div>`;
     }
