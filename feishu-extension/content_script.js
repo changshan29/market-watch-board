@@ -146,26 +146,32 @@ async function collectAndSend() {
 
   console.log(`[飞书采集] 发现 ${newMsgs.length} 条新消息，推送中...`);
   try {
-    const resp = await fetch(serverUrl + '/api/feishu-msg', {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify(newMsgs),
-    });
-    const data = await resp.json();
-    console.log('[飞书采集] 推送结果:', data);
-
-    // 记录发送统计
-    const stats = JSON.parse(sessionStorage.getItem('_feishu_stats') || '{"total":0}');
-    stats.total = (stats.total || 0) + (data.added || 0);
-    stats.lastSent = new Date().toISOString();
-    sessionStorage.setItem('_feishu_stats', JSON.stringify(stats));
+    chrome.runtime.sendMessage(
+      { type: 'PUSH_MESSAGES', serverUrl, messages: newMsgs },
+      resp => {
+        if (resp && resp.ok) {
+          console.log('[飞书采集] 推送结果:', resp.data);
+          const stats = JSON.parse(sessionStorage.getItem('_feishu_stats') || '{"total":0}');
+          stats.total = (stats.total || 0) + (resp.data.added || 0);
+          stats.lastSent = new Date().toISOString();
+          sessionStorage.setItem('_feishu_stats', JSON.stringify(stats));
+        } else {
+          console.error('[飞书采集] 推送失败:', resp && resp.error);
+        }
+      }
+    );
   } catch (e) {
     console.error('[飞书采集] 推送失败:', e);
   }
 }
 
 // 初次延迟5秒后运行（等页面加载完成），之后每60秒一次
+let _timer = null;
 setTimeout(() => {
+  if (!chrome.runtime?.id) return;
   collectAndSend();
-  setInterval(collectAndSend, INTERVAL_MS);
+  _timer = setInterval(() => {
+    if (!chrome.runtime?.id) { clearInterval(_timer); return; }
+    collectAndSend();
+  }, INTERVAL_MS);
 }, 5000);

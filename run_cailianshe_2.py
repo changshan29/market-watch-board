@@ -20,7 +20,6 @@ import argparse
 import requests
 from datetime import datetime, timedelta
 from pathlib import Path
-from concurrent.futures import ThreadPoolExecutor, as_completed
 
 # 添加项目根目录到路径
 ROOT = Path(__file__).parent
@@ -103,16 +102,13 @@ def run_scrapers(cls_only: bool = False, source_filter: str = None) -> list[dict
         tasks["其他"]   = fetch_other
 
     all_articles = []
-    with ThreadPoolExecutor(max_workers=4) as executor:
-        futures = {executor.submit(fn): name for name, fn in tasks.items()}
-        for future in as_completed(futures):
-            name = futures[future]
-            try:
-                items = future.result()
-                print_step(f"  {name}: {len(items)} 条")
-                all_articles.extend(items)
-            except Exception as e:
-                print_step(f"  {name} 失败: {e}")
+    for name, fn in tasks.items():
+        try:
+            items = fn()
+            print_step(f"  {name}: {len(items)} 条")
+            all_articles.extend(items)
+        except Exception as e:
+            print_step(f"  {name} 失败: {e}")
 
     # 去重（按id）
     seen = set()

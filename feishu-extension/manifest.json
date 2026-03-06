@@ -4,8 +4,12 @@
   "version": "1.0",
   "description": "从飞书网页版群聊采集消息，推送到看板服务器",
   "permissions": ["storage", "alarms", "scripting", "tabs"],
+  "background": {
+    "service_worker": "background.js"
+  },
   "host_permissions": [
     "https://*.feishu.cn/*",
+    "https://msg.juliang888.top/*",
     "https://market-watch-board-production.up.railway.app/*",
     "http://localhost:3220/*"
   ],
@@ -13,6 +17,11 @@
     {
       "matches": ["https://*.feishu.cn/*"],
       "js": ["content_script.js"],
+      "run_at": "document_idle"
+    },
+    {
+      "matches": ["https://msg.juliang888.top/*"],
+      "js": ["juliang_script.js"],
       "run_at": "document_idle"
     }
   ],

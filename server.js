@@ -265,11 +265,12 @@ const server = http.createServer((req, res) => {
         const uid = 'feishu_' + msg.id;
         if (existingIds.has(uid)) continue;
         const content = msg.text || '';
+        const title = msg.title || (content.slice(0, 50) + (content.length > 50 ? '…' : ''));
         articles.unshift({
           id: uid,
-          title: content.slice(0, 50) + (content.length > 50 ? '…' : ''),
+          title,
           content: content.slice(0, 3000),
-          content_html: '',
+          content_html: msg.content_html || '',
           source_type: '公众号',
           source_sub: msg.group_name || '飞书群',
           url: '',
