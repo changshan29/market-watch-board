@@ -40,6 +40,33 @@ function saveBase64Image(b64) {
   } catch { return null; }
 }
 
+// 从 URL 下载图片到本地（用于聚量等带 token 的图片链接）
+function downloadImage(imgUrl) {
+  return new Promise(resolve => {
+    try {
+      const extMatch = imgUrl.match(/\.(jpg|jpeg|png|gif|webp)/i);
+      const ext = extMatch ? extMatch[1].toLowerCase() : 'jpg';
+      const hash = crypto.createHash('md5').update(imgUrl).digest('hex').slice(0, 16);
+      const filename = `${hash}.${ext}`;
+      const localPath = path.join(IMAGES_DIR, filename);
+      if (fs.existsSync(localPath)) return resolve(`/api/images/${filename}`);
+      const mod = imgUrl.startsWith('https') ? https : http;
+      const req = mod.get(imgUrl, { headers: { 'User-Agent': 'Mozilla/5.0' } }, res => {
+        if (res.statusCode !== 200) return resolve(null);
+        const chunks = [];
+        res.on('data', c => chunks.push(c));
+        res.on('end', () => {
+          fs.writeFileSync(localPath, Buffer.concat(chunks));
+          console.log(`[image-dl] saved ${filename}`);
+          resolve(`/api/images/${filename}`);
+        });
+      });
+      req.on('error', () => resolve(null));
+      req.setTimeout(8000, () => { req.destroy(); resolve(null); });
+    } catch { resolve(null); }
+  });
+}
+
 const PORT          = 3220;
 const DATA_FILE     = path.join(__dirname, 'data', 'articles.json');
 const INDEX_FILE    = path.join(__dirname, 'index.html');
@@ -280,7 +307,7 @@ const server = http.createServer((req, res) => {
 
   // POST /api/feishu-msg — 接收飞书插件推送的消息
   if (req.method === 'POST' && url.pathname === '/api/feishu-msg') {
-    readBody(req).then(body => {
+    readBody(req).then(async body => {
       // 兼容两种格式：{ messages: [...] } 或直接 [...]
       const messages = Array.isArray(body) ? body : (Array.isArray(body.messages) ? body.messages : [body]);
       const articles = readArticles();
@@ -292,7 +319,7 @@ const server = http.createServer((req, res) => {
         const content = msg.text || '';
         const title = msg.title || (content === '[图片]' ? '图片消息' : (content.slice(0, 50) + (content.length > 50 ? '…' : '')));
 
-        // 处理图片：base64 存本地，生成 content_html
+        // 处理图片：base64 存本地 或 URL 下载
         let contentHtml = msg.content_html || '';
         const imagePaths = [];
         for (const b64 of (msg.images || [])) {
@@ -301,6 +328,10 @@ const server = http.createServer((req, res) => {
             if (localPath) imagePaths.push(localPath);
           }
         }
+        // image_urls：服务端立刻下载（聚量带token图片）
+        const urlDownloadPromises = (msg.image_urls || []).map(u => downloadImage(u));
+        const urlPaths = await Promise.all(urlDownloadPromises);
+        for (const p of urlPaths) { if (p) imagePaths.push(p); }
         if (imagePaths.length > 0) {
           contentHtml = imagePaths.map(p => `<img src="${p}" style="max-width:100%;display:block;margin:4px 0;">`).join('');
         } else if (content && content !== '[图片]') {

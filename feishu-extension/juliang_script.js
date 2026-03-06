@@ -84,27 +84,20 @@ async function extractMessages() {
       || p.parentElement?.parentElement
       || p.parentElement;
 
-    // 收集容器内图片转 base64
-    const imageBase64s = [];
+    // 收集容器内图片 URL（直接发URL给服务端下载）
+    const imageUrls = [];
     if (container) {
       for (const img of container.querySelectorAll('img')) {
-        if (!img.complete || img.naturalWidth === 0) continue;
-        // 跳过极小图标（头像等）
-        if (img.naturalWidth < 50 && img.naturalHeight < 50) continue;
-        const b64 = await imgToBase64(img);
-        if (b64) imageBase64s.push(b64);
+        const src = img.getAttribute('src') || '';
+        if (!src || src.startsWith('data:')) continue;
+        if (img.naturalWidth < 50 && img.naturalHeight < 50) continue; // 跳过小图标
+        imageUrls.push(src);
       }
     }
 
     if (!text) {
-      if (imageBase64s.length > 0) {
-        msgs.push({
-          text: '[图片]',
-          timestamp: new Date().toISOString(),
-          contentHtml: '',
-          title: '图片',
-          images: imageBase64s,
-        });
+      if (imageUrls.length > 0) {
+        msgs.push({ text: '[图片]', timestamp: new Date().toISOString(), title: '图片', imageUrls });
       }
       continue;
     }
@@ -118,13 +111,7 @@ async function extractMessages() {
       timestamp = today.toISOString();
     }
 
-    msgs.push({
-      text,
-      timestamp,
-      contentHtml: '',
-      title: parseTitle(text),
-      images: imageBase64s,
-    });
+    msgs.push({ text, timestamp, title: parseTitle(text), imageUrls });
   }
   return msgs;
 }
@@ -149,8 +136,9 @@ async function collectAndSend() {
       id: msg.text.slice(0, 60).replace(/\s+/g, ''),
       text: msg.text,
       title: msg.title,
-      content_html: msg.contentHtml,
-      images: msg.images || [],
+      content_html: '',
+      images: [],
+      image_urls: msg.imageUrls || [],
       group_name: groupName,
       timestamp: msg.timestamp,
     });
