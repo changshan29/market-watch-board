@@ -244,6 +244,56 @@ const server = http.createServer((req, res) => {
     return;
   }
 
+  // OPTIONS 预检（飞书插件跨域）
+  if (req.method === 'OPTIONS' && url.pathname === '/api/feishu-msg') {
+    res.writeHead(204, {
+      'Access-Control-Allow-Origin': '*',
+      'Access-Control-Allow-Methods': 'POST, OPTIONS',
+      'Access-Control-Allow-Headers': 'Content-Type',
+    });
+    res.end();
+    return;
+  }
+
+  // POST /api/feishu-msg — 接收飞书插件推送的消息
+  if (req.method === 'POST' && url.pathname === '/api/feishu-msg') {
+    readBody(req).then(messages => {
+      const articles = readArticles();
+      const existingIds = new Set(articles.map(a => a.id));
+      let added = 0;
+      for (const msg of (Array.isArray(messages) ? messages : [messages])) {
+        const uid = 'feishu_' + msg.id;
+        if (existingIds.has(uid)) continue;
+        const content = msg.text || '';
+        articles.unshift({
+          id: uid,
+          title: content.slice(0, 50) + (content.length > 50 ? '…' : ''),
+          content: content.slice(0, 3000),
+          content_html: '',
+          source_type: '公众号',
+          source_sub: msg.group_name || '飞书群',
+          url: '',
+          published_at: msg.timestamp || new Date().toISOString(),
+          source_label: '公众号',
+          topic_label: '其他',
+          summary: content.slice(0, 100),
+          kb_keywords: [], kb_matched: false, kb_snippets: [],
+          industry_label: '其他',
+        });
+        existingIds.add(uid);
+        added++;
+      }
+      if (added > 0) fs.writeFileSync(DATA_FILE, JSON.stringify(articles, null, 2));
+      console.log(`[feishu-msg] received ${Array.isArray(messages) ? messages.length : 1}, added ${added}`);
+      res.writeHead(200, { 'Content-Type': 'application/json; charset=utf-8', 'Access-Control-Allow-Origin': '*' });
+      res.end(JSON.stringify({ ok: true, added }));
+    }).catch(e => {
+      res.writeHead(400);
+      res.end(JSON.stringify({ error: e.message }));
+    });
+    return;
+  }
+
   // GET /api/sources
   if (req.method === 'GET' && url.pathname === '/api/sources') {
     const src = readJson(SOURCES_FILE, { webpages: [], xueqiu: [], wechat: [], other: [] });
