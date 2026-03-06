@@ -93,7 +93,7 @@ function scheduleAutoRefresh() {
     lastScrapeStatus = 'running';
     exec('python3 run_cailianshe_2.py --no-kb --fast', {
       cwd: __dirname,
-      timeout: 60000,
+      timeout: 300000,
       maxBuffer: 10 * 1024 * 1024
     }, (err, stdout, stderr) => {
       if (err) {
@@ -145,7 +145,7 @@ lastScrapeTime = new Date().toISOString();
 lastScrapeStatus = 'running (startup)';
 exec('python3 run_cailianshe_2.py --no-kb --fast', {
   cwd: __dirname,
-  timeout: 60000,  // 60秒超时
+  timeout: 300000,  // 60秒超时
   maxBuffer: 10 * 1024 * 1024  // 10MB buffer
 }, (err, stdout, stderr) => {
   console.log('[startup] callback triggered');
@@ -223,7 +223,7 @@ const server = http.createServer((req, res) => {
     res.end(JSON.stringify({ status: 'refreshing' }));
     exec('python3 run_cailianshe_2.py --no-kb --fast', {
       cwd: __dirname,
-      timeout: 60000,
+      timeout: 300000,
       maxBuffer: 10 * 1024 * 1024
     }, (err, stdout, stderr) => {
       if (err) {
