@@ -37,5 +37,11 @@
       "name": "看懂龙头股"
     }
   ],
-  "other": []
+  "other": [],
+  "gmail": {
+    "user": "clsliuxiansheng@gmail.com",
+    "password": "btqcrvjguobpiuyp",
+    "filters": ["dingtalk", "dingding", "alibaba", "钉钉"],
+    "days": 7
+  }
 }
