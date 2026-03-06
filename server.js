@@ -280,11 +280,13 @@ const server = http.createServer((req, res) => {
 
   // POST /api/feishu-msg — 接收飞书插件推送的消息
   if (req.method === 'POST' && url.pathname === '/api/feishu-msg') {
-    readBody(req).then(messages => {
+    readBody(req).then(body => {
+      // 兼容两种格式：{ messages: [...] } 或直接 [...]
+      const messages = Array.isArray(body) ? body : (Array.isArray(body.messages) ? body.messages : [body]);
       const articles = readArticles();
       const existingIds = new Set(articles.map(a => a.id));
       let added = 0;
-      for (const msg of (Array.isArray(messages) ? messages : [messages])) {
+      for (const msg of messages) {
         const uid = 'feishu_' + msg.id;
         if (existingIds.has(uid)) continue;
         const content = msg.text || '';
@@ -335,7 +337,7 @@ const server = http.createServer((req, res) => {
         merged.sort((a, b) => (b.published_at || '').localeCompare(a.published_at || ''));
         fs.writeFileSync(DATA_FILE, JSON.stringify(merged, null, 2));
       }
-      console.log(`[feishu-msg] received ${Array.isArray(messages) ? messages.length : 1}, added ${added}`);
+      console.log(`[feishu-msg] received ${messages.length}, added ${added}`);
       res.writeHead(200, { 'Content-Type': 'application/json; charset=utf-8', 'Access-Control-Allow-Origin': '*' });
       res.end(JSON.stringify({ ok: true, added }));
     }).catch(e => {
