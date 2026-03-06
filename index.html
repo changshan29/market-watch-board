@@ -99,30 +99,37 @@
       height: 100%;
     }
 
-    /* 中：雪球 + 公众号叠放 */
+    /* 中：雪球 + 公众号叠放 → 改为小作文独占 */
     #panel-right {
       display: grid;
-      grid-template-rows: 1fr 1fr;
+      grid-template-rows: 1fr;
       height: 100%;
       overflow: hidden;
       border-right: 1px solid #2a2d3e;
     }
 
     #panel-xueqiu {
-      border-bottom: 1px solid #2a2d3e;
-      overflow-y: auto;
+      display: none;
     }
 
     #panel-wechat {
       overflow-y: auto;
+      height: 100%;
     }
 
-    /* 右：概念 + 关键词叠放 */
+    /* 右：雪球（上）+ 概念/关键词（下） */
     #panel-filter-col {
       display: flex;
       flex-direction: column;
       height: 100%;
       overflow: hidden;
+    }
+
+    #panel-xueqiu-right {
+      flex: 1;
+      border-bottom: 1px solid #2a2d3e;
+      overflow-y: auto;
+      min-height: 0;
     }
 
     #panel-concept {
@@ -555,9 +562,20 @@
     </div>
   </div>
 
-  <!-- 右：概念 + 关键词 -->
+  <!-- 右：雪球（上）+ 概念/关键词（下） -->
   <div id="panel-filter-col">
-    <!-- 右上：A股概念 -->
+    <!-- 右上：雪球（从中列移过来） -->
+    <div id="panel-xueqiu-right">
+      <div class="panel-header">
+        <div class="panel-stripe stripe-xueqiu"></div>
+        <span class="panel-title">雪球</span>
+        <span class="panel-count" id="cnt-xueqiu">-</span>
+      </div>
+      <div class="panel-body">
+        <div class="article-list" id="list-xueqiu"></div>
+      </div>
+    </div>
+    <!-- 右下：A股概念 + 关键词搜索 -->
     <div id="panel-concept">
       <div class="panel-header">
         <div class="panel-stripe stripe-concept"></div>
@@ -578,7 +596,7 @@
         </div>
       </div>
     </div>
-    <!-- 右下：留空（其他用途） -->
+    <!-- 关键词搜索（保留功能，折叠到概念区下方） -->
     <div id="panel-keyword">
       <div class="panel-header">
         <div class="panel-stripe stripe-keyword"></div>
