@@ -39,39 +39,6 @@ function saveBase64Image(b64) {
     return `/api/images/${filename}`;
   } catch { return null; }
 }
-  return new Promise((resolve) => {
-    try {
-      const extMatch = imgUrl.match(/\.(jpg|jpeg|png|gif|webp)/i);
-      const ext = extMatch ? extMatch[1] : 'jpg';
-      const hash = Buffer.from(imgUrl).toString('base64').replace(/[^a-zA-Z0-9]/g, '').slice(0, 40);
-      const filename = `${hash}.${ext}`;
-      const localPath = path.join(IMAGES_DIR, filename);
-      const publicPath = `/api/images/${filename}`;
-
-      // 已存在则直接返回
-      if (fs.existsSync(localPath)) return resolve(publicPath);
-
-      const mod = imgUrl.startsWith('https') ? https : http;
-      const req = mod.get(imgUrl, {
-        headers: {
-          'Referer': 'https://www.feishu.cn/',
-          'User-Agent': 'Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36',
-        }
-      }, (res) => {
-        if (res.statusCode !== 200) return resolve(null);
-        const chunks = [];
-        res.on('data', c => chunks.push(c));
-        res.on('end', () => {
-          fs.writeFileSync(localPath, Buffer.concat(chunks));
-          console.log(`[image-proxy] saved ${filename}`);
-          resolve(publicPath);
-        });
-      });
-      req.on('error', () => resolve(null));
-      req.setTimeout(10000, () => { req.destroy(); resolve(null); });
-    } catch { resolve(null); }
-  });
-}
 
 const PORT          = 3220;
 const DATA_FILE     = path.join(__dirname, 'data', 'articles.json');
