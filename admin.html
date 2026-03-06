@@ -299,24 +299,25 @@
       </div>
     </div>
 
-    <!-- 公众号 -->
+    <!-- 小作文（Chrome 插件采集） -->
     <div class="section">
       <div class="sec-header">
         <div class="sec-stripe stripe-wechat"></div>
-        <span class="sec-title">公众号</span>
-        <span class="sec-hint">输入公众号名称</span>
+        <span class="sec-title">小作文</span>
+        <span class="sec-hint">Chrome 插件采集</span>
       </div>
-      <div class="source-list" id="list-wechat"></div>
-      <div class="add-row">
-        <input class="add-input" id="inp-wechat" type="text" placeholder="财联社">
-        <button class="add-btn" onclick="addSource('wechat')">添加</button>
+      <div style="flex:1;font-size:12px;color:#555;line-height:1.7;margin-bottom:12px;">
+        通过 Chrome 插件从飞书群、聚量群等页面采集消息。<br>
+        来源配置在插件弹窗中完成，此处仅设置采集间隔。
       </div>
-      <div class="interval-row">
-        <span class="interval-label">自动刷新间隔</span>
-        <input class="interval-input" id="iv-wechat" type="number" min="1" value="60">
-        <select class="interval-unit-select" id="unit-wechat">
-          <option value="60">分钟</option>
-          <option value="1">秒</option>
+      <div class="interval-row" style="border-top:none;padding-top:0;">
+        <span class="interval-label">插件采集间隔</span>
+        <select class="interval-unit-select" id="iv-plugin" style="width:auto;">
+          <option value="30">30 秒</option>
+          <option value="60" selected>1 分钟</option>
+          <option value="120">2 分钟</option>
+          <option value="300">5 分钟</option>
+          <option value="600">10 分钟</option>
         </select>
       </div>
     </div>
@@ -330,8 +331,8 @@
 </div>
 
 <script>
-  let sources  = { webpages: [], xueqiu: [], wechat: [] };
-  let settings = { intervals: { webpages: 30, xueqiu: 10, wechat: 60 } };
+  let sources  = { webpages: [], xueqiu: [] };
+  let settings = { intervals: { webpages: 1800, xueqiu: 600 }, plugin_interval: 60 };
 
   // ── 初始化加载 ──────────────────────────────────────────────────────────────
   async function load() {
@@ -344,13 +345,14 @@
 
     renderList('webpages');
     renderList('xueqiu');
-    renderList('wechat');
 
     const iv = settings.intervals || {};
-    // 间隔以秒为单位存储，显示时自动选择合适单位
     setInterval('webpages', iv.webpages ?? 1800);
     setInterval('xueqiu',   iv.xueqiu   ?? 600);
-    setInterval('wechat',   iv.wechat   ?? 3600);
+
+    // 插件采集间隔
+    const pluginIv = settings.plugin_interval || 60;
+    document.getElementById('iv-plugin').value = String(pluginIv);
 
     // 加载系统状态
     await loadSystemStatus();
@@ -539,8 +541,8 @@
     settings.intervals = {
       webpages: parseInt(document.getElementById('iv-webpages').value) * parseInt(document.getElementById('unit-webpages').value) || 1800,
       xueqiu:   parseInt(document.getElementById('iv-xueqiu').value)   * parseInt(document.getElementById('unit-xueqiu').value)   || 600,
-      wechat:   parseInt(document.getElementById('iv-wechat').value)   * parseInt(document.getElementById('unit-wechat').value)   || 3600,
     };
+    settings.plugin_interval = parseInt(document.getElementById('iv-plugin').value) || 60;
     await Promise.all([
       fetch('/api/sources',  { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(sources)  }),
       fetch('/api/settings', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(settings) }),
@@ -551,7 +553,7 @@
   }
 
   // ── 回车添加 ────────────────────────────────────────────────────────────────
-  ['webpages', 'xueqiu', 'wechat'].forEach(key => {
+  ['webpages', 'xueqiu'].forEach(key => {
     document.getElementById(`inp-${key}`).addEventListener('keydown', e => {
       if (e.key === 'Enter') addSource(key);
     });

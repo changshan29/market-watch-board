@@ -24,7 +24,7 @@ const ADMIN_FILE    = path.join(__dirname, 'admin.html');
 const SOURCES_FILE  = path.join(__dirname, 'sources.json');
 const SETTINGS_FILE = path.join(__dirname, 'settings.json');
 
-const DEFAULT_SETTINGS = { intervals: { webpages: 1800, xueqiu: 600, wechat: 3600 } };  // 秒
+const DEFAULT_SETTINGS = { intervals: { webpages: 1800, xueqiu: 600 }, plugin_interval: 60 };
 
 function readJson(file, fallback) {
   try { return JSON.parse(fs.readFileSync(file, 'utf8')); } catch { return fallback; }
@@ -85,7 +85,7 @@ function scheduleAutoRefresh() {
 
   const settings = readJson(SETTINGS_FILE, DEFAULT_SETTINGS);
   const iv = settings.intervals || {};
-  const minSec = Math.min(iv.webpages ?? 1800, iv.xueqiu ?? 600, iv.wechat ?? 3600);
+  const minSec = Math.min(iv.webpages ?? 1800, iv.xueqiu ?? 600);
 
   refreshTimer = setTimeout(() => {
     console.log('[auto] running full scraper...');
@@ -271,11 +271,11 @@ const server = http.createServer((req, res) => {
           title,
           content: content.slice(0, 3000),
           content_html: msg.content_html || '',
-          source_type: '公众号',
+          source_type: '小作文',
           source_sub: msg.group_name || '飞书群',
           url: '',
           published_at: msg.timestamp || new Date().toISOString(),
-          source_label: '公众号',
+          source_label: '小作文',
           topic_label: '其他',
           summary: content.slice(0, 100),
           kb_keywords: [], kb_matched: false, kb_snippets: [],
@@ -322,6 +322,14 @@ const server = http.createServer((req, res) => {
     if (!requireAuth(req, res)) return;
     res.writeHead(200, { 'Content-Type': 'application/json; charset=utf-8', 'Access-Control-Allow-Origin': '*' });
     res.end(JSON.stringify(readJson(SETTINGS_FILE, DEFAULT_SETTINGS)));
+    return;
+  }
+
+  // GET /api/plugin-config — 公开端点，供 Chrome 插件读取采集间隔
+  if (req.method === 'GET' && url.pathname === '/api/plugin-config') {
+    const s = readJson(SETTINGS_FILE, DEFAULT_SETTINGS);
+    res.writeHead(200, { 'Content-Type': 'application/json; charset=utf-8', 'Access-Control-Allow-Origin': '*' });
+    res.end(JSON.stringify({ plugin_interval: s.plugin_interval || 60 }));
     return;
   }
 

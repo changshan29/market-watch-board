@@ -532,7 +532,7 @@
     <div id="panel-wechat">
       <div class="panel-header">
         <div class="panel-stripe stripe-wechat"></div>
-        <span class="panel-title">公众号</span>
+        <span class="panel-title">小作文</span>
         <span class="panel-count" id="cnt-wechat">-</span>
       </div>
       <div class="panel-body">
@@ -726,7 +726,7 @@
   }
 
   function sourceBadgeClass(src) {
-    const map = { '网页': 'badge-web-src', '雪球': 'badge-xq-src', '公众号': 'badge-wc-src' };
+    const map = { '网页': 'badge-web-src', '雪球': 'badge-xq-src', '小作文': 'badge-wc-src' };
     return 'badge ' + (map[src] || 'badge-topic-其他');
   }
 
@@ -787,7 +787,7 @@
     }
     renderPanel('list-web',    'cnt-web',    filter('网页'));
     renderPanel('list-xueqiu', 'cnt-xueqiu', filter('雪球'));
-    renderPanel('list-wechat', 'cnt-wechat', filter('公众号'));
+    renderPanel('list-wechat', 'cnt-wechat', filter('小作文'));
   }
 
   // ── AI 筛选 ───────────────────────────────────────────────────────────────

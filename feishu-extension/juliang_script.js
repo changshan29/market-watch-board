@@ -5,10 +5,11 @@ const INTERVAL_MS = 60 * 1000;
 
 function getConfig() {
   return new Promise(resolve => {
-    chrome.storage.local.get(['serverUrl', 'juliangGroupName'], items => {
+    chrome.storage.local.get(['serverUrl', 'juliangGroupName', 'pluginInterval'], items => {
       resolve({
         serverUrl: items.serverUrl || 'http://localhost:3220',
         groupName: items.juliangGroupName || '聚量群',
+        interval: (items.pluginInterval || 60) * 1000,
       });
     });
   });
@@ -132,11 +133,12 @@ async function collectAndSend() {
 }
 
 let _timer = null;
-setTimeout(() => {
+setTimeout(async () => {
   if (!chrome.runtime?.id) return;
+  const { interval } = await getConfig();
   collectAndSend();
   _timer = setInterval(() => {
     if (!chrome.runtime?.id) { clearInterval(_timer); return; }
     collectAndSend();
-  }, INTERVAL_MS);
+  }, interval || INTERVAL_MS);
 }, 5000);

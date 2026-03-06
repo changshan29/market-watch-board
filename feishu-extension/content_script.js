@@ -1,24 +1,26 @@
 // 飞书消息采集 content_script.js
 // 每60秒扫描飞书群聊 DOM，将新消息推送到服务器
+// 选择器基于实际 DOM 分析（2026-03）：
+//   消息容器：[data-id].messageItem-wrapper
+//   消息文本：.richTextContainer（内含 .rich-text-paragraph）
+//   发送者：.message-info-name
+//   时间戳：.message-timestamp（连续消息只有第一条有时间）
 
 const INTERVAL_MS = 60 * 1000;
 
 function getConfig() {
   return new Promise(resolve => {
-    chrome.storage.local.get(['serverUrl', 'groupName'], items => {
+    chrome.storage.local.get(['serverUrl', 'groupName', 'pluginInterval'], items => {
       resolve({
         serverUrl: items.serverUrl || 'http://localhost:3220',
         groupName: items.groupName || '飞书群',
+        interval: (items.pluginInterval || 60) * 1000,
       });
     });
   });
 }
 
-function hashMsg(sender, text) {
-  return sender + '::' + text.slice(0, 20);
-}
-
-function getSentHashes() {
+function getSentIds() {
   try {
     return new Set(JSON.parse(sessionStorage.getItem('_feishu_sent') || '[]'));
   } catch {
@@ -26,110 +28,79 @@ function getSentHashes() {
   }
 }
 
-function saveSentHashes(set) {
-  // 最多保留2000条，防止无限增长
+function saveSentIds(set) {
   const arr = [...set].slice(-2000);
   sessionStorage.setItem('_feishu_sent', JSON.stringify(arr));
 }
 
 function extractMessages() {
-  // 多套备选选择器，应对飞书 DOM 变更
-  const containerSelectors = [
-    '[data-testid="message-list"]',
-    '.message-list',
-    '.chat-content',
-    '.im-chat-main-msg-list',
-    '.msg-list',
-  ];
-  const itemSelectors = [
-    '[data-testid="message-item"]',
-    '.message-item',
-    '.msg-list-item',
-    '.im-message-item',
-    '.chat-message-item',
-  ];
-  const textSelectors = [
-    '.text-content',
-    '.message-text',
-    '.msg-text',
-    '.im-message-text',
-    '[data-type="text"]',
-  ];
-  const senderSelectors = [
-    '.sender-name',
-    '.name',
-    '.msg-sender-name',
-    '.im-sender-name',
-    '.author-name',
-  ];
-
-  // 找消息容器
-  let container = null;
-  for (const sel of containerSelectors) {
-    container = document.querySelector(sel);
-    if (container) break;
+  // 飞书消息容器：[data-id].messageItem-wrapper
+  const items = document.querySelectorAll('[data-id].messageItem-wrapper');
+  if (items.length === 0) {
+    console.log('[飞书采集] 未找到 .messageItem-wrapper，可能不在群聊页面');
+    return [];
   }
-  if (!container) container = document.body;
-
-  // 找消息条目
-  let items = [];
-  for (const sel of itemSelectors) {
-    items = [...container.querySelectorAll(sel)];
-    if (items.length > 0) break;
-  }
-  if (items.length === 0) return [];
 
   const msgs = [];
+  let lastSender = '';
+  let lastTime = '';
+
   for (const item of items) {
-    // 提取文本
-    let text = '';
-    for (const sel of textSelectors) {
-      const el = item.querySelector(sel);
-      if (el) { text = el.innerText.trim(); break; }
-    }
-    if (!text) text = item.innerText.trim();
+    const msgId = item.getAttribute('data-id');
+    if (!msgId) continue;
+
+    // 提取文本：.richTextContainer 包含实际富文本内容
+    const richEl = item.querySelector('.richTextContainer');
+    if (!richEl) continue;
+    const text = richEl.innerText.trim();
     if (!text) continue;
 
-    // 提取发送者
-    let sender = '';
-    for (const sel of senderSelectors) {
-      const el = item.querySelector(sel);
-      if (el) { sender = el.innerText.trim(); break; }
+    // 发送者：.message-info-name（连续消息没有发送者节点，沿用上一条）
+    const senderEl = item.querySelector('.message-info-name');
+    if (senderEl && senderEl.innerText.trim()) {
+      lastSender = senderEl.innerText.trim();
     }
 
-    // 提取时间（尽力而为）
+    // 时间戳：.message-timestamp（连续消息没有，沿用上一条）
+    const timeEl = item.querySelector('.message-timestamp');
+    if (timeEl && timeEl.innerText.trim()) {
+      lastTime = timeEl.innerText.trim();
+    }
+
+    // 将 "14:54" 格式转为完整 ISO 时间戳
     let timestamp = new Date().toISOString();
-    const timeEl = item.querySelector('time, [data-time], .time, .msg-time, .message-time');
-    if (timeEl) {
-      const t = timeEl.getAttribute('datetime') || timeEl.getAttribute('data-time') || timeEl.innerText;
-      if (t) {
-        const parsed = new Date(t);
-        if (!isNaN(parsed)) timestamp = parsed.toISOString();
+    if (lastTime) {
+      const m = lastTime.match(/^(\d{1,2}):(\d{2})(?::(\d{2}))?/);
+      if (m) {
+        const d = new Date();
+        d.setHours(parseInt(m[1]), parseInt(m[2]), parseInt(m[3] || '0'), 0);
+        timestamp = d.toISOString();
       }
     }
 
-    msgs.push({ sender, text, timestamp });
+    msgs.push({ msgId, sender: lastSender, text, timestamp });
   }
+
   return msgs;
 }
 
 async function collectAndSend() {
   const { serverUrl, groupName } = await getConfig();
   const msgs = extractMessages();
+
   if (msgs.length === 0) {
     console.log('[飞书采集] 未找到消息，跳过');
     return;
   }
 
-  const sent = getSentHashes();
+  const sentIds = getSentIds();
   const newMsgs = [];
 
   for (const msg of msgs) {
-    const h = hashMsg(msg.sender, msg.text);
-    if (sent.has(h)) continue;
-    sent.add(h);
+    if (sentIds.has(msg.msgId)) continue;
+    sentIds.add(msg.msgId);
     newMsgs.push({
-      id: h + '_' + Date.now(),
+      id: msg.msgId,
       text: msg.text,
       sender: msg.sender,
       group_name: groupName,
@@ -137,7 +108,7 @@ async function collectAndSend() {
     });
   }
 
-  saveSentHashes(sent);
+  saveSentIds(sentIds);
 
   if (newMsgs.length === 0) {
     console.log('[飞书采集] 无新消息');
@@ -145,33 +116,36 @@ async function collectAndSend() {
   }
 
   console.log(`[飞书采集] 发现 ${newMsgs.length} 条新消息，推送中...`);
-  try {
-    chrome.runtime.sendMessage(
-      { type: 'PUSH_MESSAGES', serverUrl, messages: newMsgs },
-      resp => {
-        if (resp && resp.ok) {
-          console.log('[飞书采集] 推送结果:', resp.data);
+  chrome.runtime.sendMessage(
+    { type: 'PUSH_MESSAGES', serverUrl, messages: newMsgs },
+    resp => {
+      if (chrome.runtime.lastError) {
+        console.error('[飞书采集] runtime 错误:', chrome.runtime.lastError.message);
+        return;
+      }
+      if (resp && resp.ok) {
+        console.log('[飞书采集] 推送成功:', resp.data);
+        try {
           const stats = JSON.parse(sessionStorage.getItem('_feishu_stats') || '{"total":0}');
-          stats.total = (stats.total || 0) + (resp.data.added || 0);
+          stats.total = (stats.total || 0) + newMsgs.length;
           stats.lastSent = new Date().toISOString();
           sessionStorage.setItem('_feishu_stats', JSON.stringify(stats));
-        } else {
-          console.error('[飞书采集] 推送失败:', resp && resp.error);
-        }
+        } catch {}
+      } else {
+        console.error('[飞书采集] 推送失败:', resp && resp.error);
       }
-    );
-  } catch (e) {
-    console.error('[飞书采集] 推送失败:', e);
-  }
+    }
+  );
 }
 
-// 初次延迟5秒后运行（等页面加载完成），之后每60秒一次
+// 初次延迟5秒后运行，之后按服务器配置间隔运行
 let _timer = null;
-setTimeout(() => {
+setTimeout(async () => {
   if (!chrome.runtime?.id) return;
+  const { interval } = await getConfig();
   collectAndSend();
   _timer = setInterval(() => {
     if (!chrome.runtime?.id) { clearInterval(_timer); return; }
     collectAndSend();
-  }, INTERVAL_MS);
+  }, interval || INTERVAL_MS);
 }, 5000);
