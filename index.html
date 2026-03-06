@@ -1052,7 +1052,7 @@
       return;
     }
 
-    if (a.source_type === '公众号' && a.url && stored.length < 300) {
+    if (a.url && stored.length < 300) {
       setModalContent(contentEl, '', stored || '正在加载原文…');
       try {
         const resp = await fetch(`/api/fetch-content?url=${encodeURIComponent(a.url)}`);
