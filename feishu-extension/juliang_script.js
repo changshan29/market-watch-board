@@ -33,6 +33,18 @@ function parseTitle(text) {
   return text.replace(/^\d{1,2}:\d{2}:\d{2}\s*/, '').slice(0, 50);
 }
 
+function getImgsHtml(container) {
+  let html = '';
+  if (!container) return html;
+  for (const img of container.querySelectorAll('img')) {
+    const src = img.getAttribute('src') || img.getAttribute('data-src') || '';
+    if (src && !src.startsWith('data:')) {
+      html += `<img src="${src}" style="max-width:100%;display:block;margin:4px 0;">`;
+    }
+  }
+  return html;
+}
+
 function extractMessages() {
   // 稳定选择器：MuiTypography-body1
   const paras = [...document.querySelectorAll('p.MuiTypography-body1')];
@@ -41,9 +53,27 @@ function extractMessages() {
   const msgs = [];
   for (const p of paras) {
     const text = p.innerText.trim();
-    if (!text) continue;
     // 跳过纯时间格式（如 "13:42:14"）
     if (/^\d{1,2}:\d{2}:\d{2}$/.test(text)) continue;
+
+    // 消息容器：优先 li，其次 [role=listitem]，再退回祖父/父
+    const container = p.closest('li')
+      || p.closest('[role="listitem"]')
+      || p.parentElement?.parentElement
+      || p.parentElement;
+
+    // 无文字时：只有容器内有图片才保留
+    if (!text) {
+      const imgHtml = getImgsHtml(container);
+      if (!imgHtml) continue;
+      msgs.push({
+        text: '[图片]',
+        timestamp: new Date().toISOString(),
+        contentHtml: imgHtml,
+        title: '图片',
+      });
+      continue;
+    }
 
     // 尝试从文本头部解析时间 "13:42:14"
     let timestamp = new Date().toISOString();
@@ -55,25 +85,10 @@ function extractMessages() {
       timestamp = today.toISOString();
     }
 
-    // 构建 content_html：文本 + 父/祖父容器内的图片
-    let contentHtml = `<p>${text.replace(/</g, '&lt;').replace(/>/g, '&gt;')}</p>`;
-    const container = p.parentElement?.parentElement || p.parentElement;
-    if (container) {
-      const imgs = container.querySelectorAll('img');
-      for (const img of imgs) {
-        const src = img.getAttribute('src') || img.getAttribute('data-src') || '';
-        if (src && !src.startsWith('data:')) {
-          contentHtml += `<img src="${src}" style="max-width:100%;display:block;margin:4px 0;">`;
-        }
-      }
-    }
+    const contentHtml = `<p>${text.replace(/</g, '&lt;').replace(/>/g, '&gt;')}</p>`
+      + getImgsHtml(container);
 
-    msgs.push({
-      text,
-      timestamp,
-      contentHtml,
-      title: parseTitle(text),
-    });
+    msgs.push({ text, timestamp, contentHtml, title: parseTitle(text) });
   }
   return msgs;
 }
