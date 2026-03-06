@@ -1,4 +1,4 @@
-// background.js — service worker，负责实际发送 HTTP 请求（绕过混合内容限制）
+// background.js — service worker，负责实际发送 HTTP 请求（绕过 CORS 限制）
 
 // 启动时从服务器同步插件采集间隔
 chrome.runtime.onInstalled.addListener(syncInterval);
@@ -6,7 +6,7 @@ chrome.runtime.onStartup.addListener(syncInterval);
 
 async function syncInterval() {
   const items = await chrome.storage.local.get(['serverUrl']);
-  const serverUrl = items.serverUrl || 'http://localhost:3220';
+  const serverUrl = items.serverUrl || 'https://market-watch-board-production.up.railway.app';
   try {
     const resp = await fetch(serverUrl + '/api/plugin-config');
     const data = await resp.json();
@@ -17,17 +17,39 @@ async function syncInterval() {
   }
 }
 
+// 把图片 URL 下载转成 base64（Service Worker 无 CORS 限制）
+async function urlToBase64(imgUrl) {
+  try {
+    const r = await fetch(imgUrl);
+    if (!r.ok) return null;
+    const blob = await r.blob();
+    const buf = await blob.arrayBuffer();
+    const bytes = new Uint8Array(buf);
+    let binary = '';
+    for (let i = 0; i < bytes.byteLength; i++) binary += String.fromCharCode(bytes[i]);
+    const b64 = btoa(binary);
+    const mime = blob.type || 'image/jpeg';
+    return `data:${mime};base64,${b64}`;
+  } catch { return null; }
+}
+
 chrome.runtime.onMessage.addListener((msg, sender, sendResponse) => {
-  if (msg.type !== 'PUSH_MESSAGES') return;
+  if (msg.type === 'PUSH_MESSAGES') {
+    fetch(msg.serverUrl + '/api/feishu-msg', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ messages: msg.messages }),
+    })
+      .then(r => r.json())
+      .then(data => sendResponse({ ok: true, data }))
+      .catch(e => sendResponse({ ok: false, error: e.message }));
+    return true;
+  }
 
-  fetch(msg.serverUrl + '/api/feishu-msg', {
-    method: 'POST',
-    headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify(msg.messages),
-  })
-    .then(r => r.json())
-    .then(data => sendResponse({ ok: true, data }))
-    .catch(e => sendResponse({ ok: false, error: e.message }));
-
-  return true;
+  if (msg.type === 'FETCH_IMAGE_BASE64') {
+    urlToBase64(msg.url)
+      .then(b64 => sendResponse({ ok: !!b64, b64 }))
+      .catch(() => sendResponse({ ok: false, b64: null }));
+    return true;
+  }
 });

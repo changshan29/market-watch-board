@@ -33,18 +33,13 @@ function parseTitle(text) {
   return text.replace(/^\d{1,2}:\d{2}:\d{2}\s*/, '').slice(0, 50);
 }
 
-// 在聚量页面内 fetch 图片转 base64（同域或允许跨域时有效）
+// 通过 background service worker 下载图片转 base64（绕过 CORS）
 function fetchImgToBase64(src) {
   return new Promise(resolve => {
-    fetch(src)
-      .then(r => r.blob())
-      .then(blob => {
-        const reader = new FileReader();
-        reader.onload = () => resolve(reader.result); // data:image/...;base64,...
-        reader.onerror = () => resolve(null);
-        reader.readAsDataURL(blob);
-      })
-      .catch(() => resolve(null));
+    chrome.runtime.sendMessage({ type: 'FETCH_IMAGE_BASE64', url: src }, resp => {
+      if (chrome.runtime.lastError || !resp || !resp.ok) return resolve(null);
+      resolve(resp.b64);
+    });
   });
 }
 
