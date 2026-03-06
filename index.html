@@ -314,6 +314,20 @@
       line-height: 1.4;
     }
 
+    .card-thumb {
+      margin: 6px 0 4px;
+      border-radius: 4px;
+      overflow: hidden;
+      max-height: 160px;
+    }
+    .card-thumb img {
+      width: 100%;
+      max-height: 160px;
+      object-fit: cover;
+      display: block;
+      border-radius: 4px;
+    }
+
     .card-summary {
       font-size: 12px;
       color: #888;
@@ -737,6 +751,14 @@
     const srcBadge = showSource
       ? `<span class="${sourceBadgeClass(srcType)}">${escHtml(srcType)}</span>`
       : '';
+    // 提取 content_html 里的第一张图作为缩略图
+    let thumbHtml = '';
+    if (a.content_html) {
+      const m = a.content_html.match(/<img[^>]+src="([^"]+)"/);
+      if (m) {
+        thumbHtml = `<div class="card-thumb"><img src="${m[1]}" loading="lazy" onerror="this.parentElement.style.display='none'"></div>`;
+      }
+    }
     return `
     <div class="article-card card" data-id="${escHtml(a.id)}" onclick="openModal('${a.id.replace(/'/g,"\\'")}')">
       <div class="card-badges">
@@ -745,6 +767,7 @@
         ${kbBadge}
       </div>
       <div class="card-title">${escHtml(a.title || '（无标题）')}</div>
+      ${thumbHtml}
       <div class="card-summary">${escHtml(a.summary || '')}</div>
       <div class="card-footer">
         <span>${escHtml(a.source_sub || '')}</span>
