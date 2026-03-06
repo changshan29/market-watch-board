@@ -131,7 +131,7 @@ async function extractMessages() {
 
 async function collectAndSend() {
   const { serverUrl, groupName } = await getConfig();
-  const msgs = extractMessages();
+  const msgs = await extractMessages();
 
   if (msgs.length === 0) {
     console.log('[聚量采集] 未找到消息，跳过');
