@@ -22,8 +22,23 @@ const { exec, execFile, spawn } = require('child_process');
 const IMAGES_DIR = path.join(__dirname, 'data', 'images');
 if (!fs.existsSync(IMAGES_DIR)) fs.mkdirSync(IMAGES_DIR, { recursive: true });
 
-// 代理下载飞书图片到本地，返回本地相对路径
-function proxyImage(imgUrl) {
+// 保存 base64 图片到本地，返回公开路径
+function saveBase64Image(b64) {
+  try {
+    const matches = b64.match(/^data:image\/(\w+);base64,(.+)$/);
+    if (!matches) return null;
+    const ext = matches[1] === 'jpeg' ? 'jpg' : matches[1];
+    const data = matches[2];
+    const hash = require('crypto').createHash('md5').update(data.slice(0, 100)).digest('hex').slice(0, 16);
+    const filename = `${hash}.${ext}`;
+    const localPath = path.join(IMAGES_DIR, filename);
+    if (!fs.existsSync(localPath)) {
+      fs.writeFileSync(localPath, Buffer.from(data, 'base64'));
+      console.log(`[image-save] saved ${filename}`);
+    }
+    return `/api/images/${filename}`;
+  } catch { return null; }
+}
   return new Promise((resolve) => {
     try {
       const extMatch = imgUrl.match(/\.(jpg|jpeg|png|gif|webp)/i);
@@ -306,12 +321,27 @@ const server = http.createServer((req, res) => {
         const uid = 'feishu_' + msg.id;
         if (existingIds.has(uid)) continue;
         const content = msg.text || '';
-        const title = msg.title || (content.slice(0, 50) + (content.length > 50 ? '…' : ''));
+        const title = msg.title || (content === '[图片]' ? '图片消息' : (content.slice(0, 50) + (content.length > 50 ? '…' : '')));
+
+        // 处理图片：base64 存本地，生成 content_html
+        let contentHtml = msg.content_html || '';
+        const imagePaths = [];
+        for (const b64 of (msg.images || [])) {
+          if (b64 && b64.startsWith('data:')) {
+            const localPath = saveBase64Image(b64);
+            if (localPath) imagePaths.push(localPath);
+          }
+        }
+        if (imagePaths.length > 0) {
+          contentHtml = imagePaths.map(p => `<img src="${p}" style="max-width:100%;display:block;margin:4px 0;">`).join('');
+        } else if (content && content !== '[图片]') {
+          contentHtml = `<p>${content.replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/\n/g, '<br>')}</p>`;
+        }
         articles.unshift({
           id: uid,
           title,
           content: content.slice(0, 3000),
-          content_html: msg.content_html || '',
+          content_html: contentHtml,
           source_type: '小作文',
           source_sub: msg.group_name || '飞书群',
           url: '',
@@ -383,6 +413,21 @@ const server = http.createServer((req, res) => {
     const s = readJson(SETTINGS_FILE, DEFAULT_SETTINGS);
     res.writeHead(200, { 'Content-Type': 'application/json; charset=utf-8', 'Access-Control-Allow-Origin': '*' });
     res.end(JSON.stringify({ plugin_interval: s.plugin_interval || 60 }));
+    return;
+  }
+
+  // GET /api/images/:filename — 本地代理图片
+  if (req.method === 'GET' && url.pathname.startsWith('/api/images/')) {
+    const filename = path.basename(url.pathname);
+    const filePath = path.join(IMAGES_DIR, filename);
+    if (fs.existsSync(filePath)) {
+      const ext = path.extname(filename).slice(1);
+      const mime = { jpg: 'image/jpeg', jpeg: 'image/jpeg', png: 'image/png', gif: 'image/gif', webp: 'image/webp' }[ext] || 'image/jpeg';
+      res.writeHead(200, { 'Content-Type': mime, 'Cache-Control': 'public, max-age=86400' });
+      res.end(fs.readFileSync(filePath));
+    } else {
+      res.writeHead(404); res.end('Not found');
+    }
     return;
   }
 

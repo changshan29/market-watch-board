@@ -34,25 +34,29 @@ function saveSentIds(set) {
   sessionStorage.setItem('_feishu_sent', JSON.stringify(arr));
 }
 
-// 从图片元素提取真实 URL（飞书图片有多种存放方式）
-function extractImgUrl(imgEl) {
-  // 优先取高清 src，飞书图片 src 通常已是完整 URL
-  const src = imgEl.getAttribute('src') || '';
-  const dataSrc = imgEl.getAttribute('data-src') || '';
-  const url = src.startsWith('http') ? src : (dataSrc.startsWith('http') ? dataSrc : '');
-  // 过滤 base64 和极小图标
-  if (!url || url.startsWith('data:')) return null;
-  // 飞书图片域名特征
-  if (url.includes('feishu') || url.includes('larksuit') || url.includes('larksuite') ||
-      url.includes('bytedance') || url.includes('byteimg') || url.includes('feishucdn')) {
-    return url;
-  }
-  // 其他 https 图片也接受
-  if (url.startsWith('https://')) return url;
-  return null;
+// 把 img 元素（含 blob: URL）转成 base64 data URL
+function imgToBase64(imgEl) {
+  return new Promise(resolve => {
+    try {
+      const canvas = document.createElement('canvas');
+      // 限制最大尺寸，避免 base64 太大
+      const MAX = 1200;
+      let w = imgEl.naturalWidth || imgEl.width || 200;
+      let h = imgEl.naturalHeight || imgEl.height || 200;
+      if (w > MAX) { h = Math.round(h * MAX / w); w = MAX; }
+      if (h > MAX) { w = Math.round(w * MAX / h); h = MAX; }
+      canvas.width = w;
+      canvas.height = h;
+      const ctx = canvas.getContext('2d');
+      ctx.drawImage(imgEl, 0, 0, w, h);
+      resolve(canvas.toDataURL('image/jpeg', 0.8));
+    } catch (e) {
+      resolve(null);
+    }
+  });
 }
 
-function extractMessages() {
+async function extractMessages() {
   const items = document.querySelectorAll('[data-id].messageItem-wrapper');
   if (items.length === 0) {
     console.log('[飞书采集] 未找到 .messageItem-wrapper，可能不在群聊页面');
@@ -99,26 +103,27 @@ function extractMessages() {
       }
     }
 
-    // ── 图片消息 ──
-    // 飞书图片消息：.im-image-message，或 .message-content 内含 img
+    // ── 图片消息：转 base64 ──
     const imgEls = item.querySelectorAll(
-      '.im-image-message img, .message-content img, [class*="image-message"] img, [class*="imageMessage"] img'
+      '.im-image-message img, .message-content img, [class*="image-message"] img, [class*="imageMessage"] img, .messenger-image__img'
     );
     if (imgEls.length > 0) {
-      const imageUrls = [];
+      const imageBase64s = [];
       for (const imgEl of imgEls) {
-        const url = extractImgUrl(imgEl);
-        if (url) imageUrls.push(url);
+        // 等图片加载完
+        if (!imgEl.complete || imgEl.naturalWidth === 0) continue;
+        const b64 = await imgToBase64(imgEl);
+        if (b64) imageBase64s.push(b64);
       }
-      if (imageUrls.length > 0) {
+      if (imageBase64s.length > 0) {
         msgs.push({
           msgId,
           sender: lastSender,
           text: '[图片]',
           timestamp,
-          images: imageUrls,
+          images: imageBase64s,
         });
-        console.log(`[飞书采集] 图片消息 ${msgId}: ${imageUrls.length} 张`);
+        console.log(`[飞书采集] 图片消息 ${msgId}: ${imageBase64s.length} 张已转 base64`);
       }
     }
   }
