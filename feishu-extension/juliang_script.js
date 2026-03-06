@@ -33,41 +33,19 @@ function parseTitle(text) {
   return text.replace(/^\d{1,2}:\d{2}:\d{2}\s*/, '').slice(0, 50);
 }
 
-// 把 img 元素转成 base64（处理跨域：先通过 canvas 绘制）
-function imgToBase64(imgEl) {
+// 在聚量页面内 fetch 图片转 base64（同域或允许跨域时有效）
+function fetchImgToBase64(src) {
   return new Promise(resolve => {
-    try {
-      // 如果已经是 base64，直接返回
-      const src = imgEl.getAttribute('src') || '';
-      if (src.startsWith('data:')) return resolve(src);
-
-      const MAX = 1200;
-      let w = imgEl.naturalWidth || imgEl.width || 200;
-      let h = imgEl.naturalHeight || imgEl.height || 200;
-      if (w > MAX) { h = Math.round(h * MAX / w); w = MAX; }
-      if (h > MAX) { w = Math.round(w * MAX / h); h = MAX; }
-      const canvas = document.createElement('canvas');
-      canvas.width = w;
-      canvas.height = h;
-      const ctx = canvas.getContext('2d');
-      ctx.drawImage(imgEl, 0, 0, w, h);
-      resolve(canvas.toDataURL('image/jpeg', 0.8));
-    } catch {
-      resolve(null);
-    }
+    fetch(src)
+      .then(r => r.blob())
+      .then(blob => {
+        const reader = new FileReader();
+        reader.onload = () => resolve(reader.result); // data:image/...;base64,...
+        reader.onerror = () => resolve(null);
+        reader.readAsDataURL(blob);
+      })
+      .catch(() => resolve(null));
   });
-}
-
-function getImgsHtml(container) {
-  let html = '';
-  if (!container) return html;
-  for (const img of container.querySelectorAll('img')) {
-    const src = img.getAttribute('src') || img.getAttribute('data-src') || '';
-    if (src && !src.startsWith('data:')) {
-      html += `<img src="${src}" style="max-width:100%;display:block;margin:4px 0;">`;
-    }
-  }
-  return html;
 }
 
 async function extractMessages() {
@@ -84,20 +62,21 @@ async function extractMessages() {
       || p.parentElement?.parentElement
       || p.parentElement;
 
-    // 收集容器内图片 URL（直接发URL给服务端下载）
-    const imageUrls = [];
+    // 收集容器内图片，fetch 转 base64
+    const imageBase64s = [];
     if (container) {
       for (const img of container.querySelectorAll('img')) {
         const src = img.getAttribute('src') || '';
         if (!src || src.startsWith('data:')) continue;
-        if (img.naturalWidth < 50 && img.naturalHeight < 50) continue; // 跳过小图标
-        imageUrls.push(src);
+        if (img.naturalWidth < 50 && img.naturalHeight < 50) continue;
+        const b64 = await fetchImgToBase64(src);
+        if (b64) imageBase64s.push(b64);
       }
     }
 
     if (!text) {
-      if (imageUrls.length > 0) {
-        msgs.push({ text: '[图片]', timestamp: new Date().toISOString(), title: '图片', imageUrls });
+      if (imageBase64s.length > 0) {
+        msgs.push({ text: '[图片]', timestamp: new Date().toISOString(), title: '图片', imageBase64s });
       }
       continue;
     }
@@ -111,7 +90,7 @@ async function extractMessages() {
       timestamp = today.toISOString();
     }
 
-    msgs.push({ text, timestamp, title: parseTitle(text), imageUrls });
+    msgs.push({ text, timestamp, title: parseTitle(text), imageBase64s });
   }
   return msgs;
 }
@@ -137,8 +116,8 @@ async function collectAndSend() {
       text: msg.text,
       title: msg.title,
       content_html: '',
-      images: [],
-      image_urls: msg.imageUrls || [],
+      images: msg.imageBase64s || [],
+      image_urls: [],
       group_name: groupName,
       timestamp: msg.timestamp,
     });
