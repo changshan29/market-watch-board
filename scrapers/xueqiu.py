@@ -19,6 +19,14 @@ CHINA_TZ = timezone(timedelta(hours=8))
 
 XUEQIU_HOME = "https://xueqiu.com"
 SOURCES_FILE = Path(__file__).parent.parent / "sources.json"
+STATE_FILE = Path(__file__).parent.parent / "data" / "xueqiu_state.json"  # 记录爬取进度
+
+# 每次爬取的用户数量（可调整）
+BATCH_SIZE = 20
+STATE_FILE = Path(__file__).parent.parent / "data" / "xueqiu_state.json"  # 记录爬取进度
+
+# 每次爬取的用户数量（可调整）
+BATCH_SIZE = 5
 
 # 尝试导入Selenium，如果失败则标记为不可用
 try:
@@ -181,6 +189,25 @@ def _fetch_user_with_selenium(user_id: str, count: int = 20) -> list[dict]:
         driver.quit()
 
 
+def _load_state() -> dict:
+    """加载爬取进度"""
+    if STATE_FILE.exists():
+        try:
+            return json.loads(STATE_FILE.read_text())
+        except Exception:
+            pass
+    return {"last_index": 0}
+
+
+def _save_state(state: dict):
+    """保存爬取进度"""
+    try:
+        STATE_FILE.parent.mkdir(parents=True, exist_ok=True)
+        STATE_FILE.write_text(json.dumps(state, ensure_ascii=False, indent=2))
+    except Exception as e:
+        print(f"[xueqiu] 保存进度失败: {e}")
+
+
 def fetch(count: int = 20) -> list[dict]:
     """
     若 sources.json 配置了雪球用户，则爬取用户时间线。
@@ -201,11 +228,28 @@ def fetch(count: int = 20) -> list[dict]:
         print("[xueqiu] 未配置用户，请在后台添加")
         return []
 
+    # 加载爬取进度
+    state = _load_state()
+    last_index = state.get("last_index", 0)
+
     articles = []
     valid_users = [u for u in xq_users if u.get("id") or u.get("user_id")]
+    total_users = len(valid_users)
+
+    if total_users == 0:
+        print("[xueqiu] 用户均无 ID，请在后台添加用户主页 URL 或数字 ID")
+        return []
+
+    # 计算本次要爬取的用户范围
+    start_index = last_index
+    end_index = min(start_index + BATCH_SIZE, total_users)
+    batch_users = valid_users[start_index:end_index]
+
+    print(f"[xueqiu] 分批爬取：第 {start_index + 1}-{end_index} 个用户（共 {total_users} 个）")
+
     sources_updated = False
 
-    for i, user in enumerate(valid_users):
+    for user in batch_users:
         uid = user.get("id") or user.get("user_id")
         items = _fetch_user_with_selenium(str(uid), count)
 
@@ -220,7 +264,14 @@ def fetch(count: int = 20) -> list[dict]:
         articles.extend(items)
         print(f"[xueqiu] user {uid}: {len(items)} 条")
 
-    # 保存更新后的sources.json
+    # 更新进度：如果已经爬完所有用户，重置为 0
+    next_index = end_index if end_index < total_users else 0
+    state["last_index"] = next_index
+    _save_state(state)
+
+    print(f"[xueqiu] 下次将从第 {next_index + 1} 个用户开始")
+
+    # 保存更新后的 sources.json
     if sources_updated:
         try:
             raw_sources["xueqiu"] = xq_users
@@ -228,10 +279,6 @@ def fetch(count: int = 20) -> list[dict]:
             print("[xueqiu] 已更新 sources.json 中的用户名")
         except Exception as e:
             print(f"[xueqiu] 更新 sources.json 失败: {e}")
-
-    if not valid_users:
-        print("[xueqiu] 用户均无 ID，请在后台添加用户主页 URL 或数字 ID")
-        return []
 
     return articles
 
