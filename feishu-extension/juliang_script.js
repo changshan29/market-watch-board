@@ -33,6 +33,31 @@ function parseTitle(text) {
   return text.replace(/^\d{1,2}:\d{2}:\d{2}\s*/, '').slice(0, 50);
 }
 
+// 把 img 元素转成 base64（处理跨域：先通过 canvas 绘制）
+function imgToBase64(imgEl) {
+  return new Promise(resolve => {
+    try {
+      // 如果已经是 base64，直接返回
+      const src = imgEl.getAttribute('src') || '';
+      if (src.startsWith('data:')) return resolve(src);
+
+      const MAX = 1200;
+      let w = imgEl.naturalWidth || imgEl.width || 200;
+      let h = imgEl.naturalHeight || imgEl.height || 200;
+      if (w > MAX) { h = Math.round(h * MAX / w); w = MAX; }
+      if (h > MAX) { w = Math.round(w * MAX / h); h = MAX; }
+      const canvas = document.createElement('canvas');
+      canvas.width = w;
+      canvas.height = h;
+      const ctx = canvas.getContext('2d');
+      ctx.drawImage(imgEl, 0, 0, w, h);
+      resolve(canvas.toDataURL('image/jpeg', 0.8));
+    } catch {
+      resolve(null);
+    }
+  });
+}
+
 function getImgsHtml(container) {
   let html = '';
   if (!container) return html;
@@ -45,37 +70,45 @@ function getImgsHtml(container) {
   return html;
 }
 
-function extractMessages() {
-  // 稳定选择器：MuiTypography-body1
+async function extractMessages() {
   const paras = [...document.querySelectorAll('p.MuiTypography-body1')];
   if (paras.length === 0) return [];
 
   const msgs = [];
   for (const p of paras) {
     const text = p.innerText.trim();
-    // 跳过纯时间格式（如 "13:42:14"）
     if (/^\d{1,2}:\d{2}:\d{2}$/.test(text)) continue;
 
-    // 消息容器：优先 li，其次 [role=listitem]，再退回祖父/父
     const container = p.closest('li')
       || p.closest('[role="listitem"]')
       || p.parentElement?.parentElement
       || p.parentElement;
 
-    // 无文字时：只有容器内有图片才保留
+    // 收集容器内图片转 base64
+    const imageBase64s = [];
+    if (container) {
+      for (const img of container.querySelectorAll('img')) {
+        if (!img.complete || img.naturalWidth === 0) continue;
+        // 跳过极小图标（头像等）
+        if (img.naturalWidth < 50 && img.naturalHeight < 50) continue;
+        const b64 = await imgToBase64(img);
+        if (b64) imageBase64s.push(b64);
+      }
+    }
+
     if (!text) {
-      const imgHtml = getImgsHtml(container);
-      if (!imgHtml) continue;
-      msgs.push({
-        text: '[图片]',
-        timestamp: new Date().toISOString(),
-        contentHtml: imgHtml,
-        title: '图片',
-      });
+      if (imageBase64s.length > 0) {
+        msgs.push({
+          text: '[图片]',
+          timestamp: new Date().toISOString(),
+          contentHtml: '',
+          title: '图片',
+          images: imageBase64s,
+        });
+      }
       continue;
     }
 
-    // 尝试从文本头部解析时间 "13:42:14"
     let timestamp = new Date().toISOString();
     const timeMatch = text.match(/^(\d{1,2}:\d{2}:\d{2})/);
     if (timeMatch) {
@@ -85,10 +118,13 @@ function extractMessages() {
       timestamp = today.toISOString();
     }
 
-    const contentHtml = `<p>${text.replace(/</g, '&lt;').replace(/>/g, '&gt;')}</p>`
-      + getImgsHtml(container);
-
-    msgs.push({ text, timestamp, contentHtml, title: parseTitle(text) });
+    msgs.push({
+      text,
+      timestamp,
+      contentHtml: '',
+      title: parseTitle(text),
+      images: imageBase64s,
+    });
   }
   return msgs;
 }
@@ -114,6 +150,7 @@ async function collectAndSend() {
       text: msg.text,
       title: msg.title,
       content_html: msg.contentHtml,
+      images: msg.images || [],
       group_name: groupName,
       timestamp: msg.timestamp,
     });
