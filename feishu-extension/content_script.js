@@ -2,9 +2,10 @@
 // 每60秒扫描飞书群聊 DOM，将新消息推送到服务器
 // 选择器基于实际 DOM 分析（2026-03）：
 //   消息容器：[data-id].messageItem-wrapper
-//   消息文本：.richTextContainer（内含 .rich-text-paragraph）
+//   文字消息：.richTextContainer
+//   图片消息：.im-image-message 或 .message-content img
 //   发送者：.message-info-name
-//   时间戳：.message-timestamp（连续消息只有第一条有时间）
+//   时间戳：.message-timestamp
 
 const INTERVAL_MS = 60 * 1000;
 
@@ -33,8 +34,25 @@ function saveSentIds(set) {
   sessionStorage.setItem('_feishu_sent', JSON.stringify(arr));
 }
 
+// 从图片元素提取真实 URL（飞书图片有多种存放方式）
+function extractImgUrl(imgEl) {
+  // 优先取高清 src，飞书图片 src 通常已是完整 URL
+  const src = imgEl.getAttribute('src') || '';
+  const dataSrc = imgEl.getAttribute('data-src') || '';
+  const url = src.startsWith('http') ? src : (dataSrc.startsWith('http') ? dataSrc : '');
+  // 过滤 base64 和极小图标
+  if (!url || url.startsWith('data:')) return null;
+  // 飞书图片域名特征
+  if (url.includes('feishu') || url.includes('larksuit') || url.includes('larksuite') ||
+      url.includes('bytedance') || url.includes('byteimg') || url.includes('feishucdn')) {
+    return url;
+  }
+  // 其他 https 图片也接受
+  if (url.startsWith('https://')) return url;
+  return null;
+}
+
 function extractMessages() {
-  // 飞书消息容器：[data-id].messageItem-wrapper
   const items = document.querySelectorAll('[data-id].messageItem-wrapper');
   if (items.length === 0) {
     console.log('[飞书采集] 未找到 .messageItem-wrapper，可能不在群聊页面');
@@ -49,25 +67,18 @@ function extractMessages() {
     const msgId = item.getAttribute('data-id');
     if (!msgId) continue;
 
-    // 提取文本：.richTextContainer 包含实际富文本内容
-    const richEl = item.querySelector('.richTextContainer');
-    if (!richEl) continue;
-    const text = richEl.innerText.trim();
-    if (!text) continue;
-
-    // 发送者：.message-info-name（连续消息没有发送者节点，沿用上一条）
+    // 发送者
     const senderEl = item.querySelector('.message-info-name');
     if (senderEl && senderEl.innerText.trim()) {
       lastSender = senderEl.innerText.trim();
     }
 
-    // 时间戳：.message-timestamp（连续消息没有，沿用上一条）
+    // 时间戳
     const timeEl = item.querySelector('.message-timestamp');
     if (timeEl && timeEl.innerText.trim()) {
       lastTime = timeEl.innerText.trim();
     }
 
-    // 将 "14:54" 格式转为完整 ISO 时间戳
     let timestamp = new Date().toISOString();
     if (lastTime) {
       const m = lastTime.match(/^(\d{1,2}):(\d{2})(?::(\d{2}))?/);
@@ -78,7 +89,38 @@ function extractMessages() {
       }
     }
 
-    msgs.push({ msgId, sender: lastSender, text, timestamp });
+    // ── 文字消息 ──
+    const richEl = item.querySelector('.richTextContainer');
+    if (richEl) {
+      const text = richEl.innerText.trim();
+      if (text) {
+        msgs.push({ msgId, sender: lastSender, text, timestamp, images: [] });
+        continue;
+      }
+    }
+
+    // ── 图片消息 ──
+    // 飞书图片消息：.im-image-message，或 .message-content 内含 img
+    const imgEls = item.querySelectorAll(
+      '.im-image-message img, .message-content img, [class*="image-message"] img, [class*="imageMessage"] img'
+    );
+    if (imgEls.length > 0) {
+      const imageUrls = [];
+      for (const imgEl of imgEls) {
+        const url = extractImgUrl(imgEl);
+        if (url) imageUrls.push(url);
+      }
+      if (imageUrls.length > 0) {
+        msgs.push({
+          msgId,
+          sender: lastSender,
+          text: '[图片]',
+          timestamp,
+          images: imageUrls,
+        });
+        console.log(`[飞书采集] 图片消息 ${msgId}: ${imageUrls.length} 张`);
+      }
+    }
   }
 
   return msgs;
@@ -102,6 +144,7 @@ async function collectAndSend() {
     newMsgs.push({
       id: msg.msgId,
       text: msg.text,
+      images: msg.images || [],
       sender: msg.sender,
       group_name: groupName,
       timestamp: msg.timestamp,
@@ -115,7 +158,7 @@ async function collectAndSend() {
     return;
   }
 
-  console.log(`[飞书采集] 发现 ${newMsgs.length} 条新消息，推送中...`);
+  console.log(`[飞书采集] 发现 ${newMsgs.length} 条新消息（含图片），推送中...`);
   chrome.runtime.sendMessage(
     { type: 'PUSH_MESSAGES', serverUrl, messages: newMsgs },
     resp => {
