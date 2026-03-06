@@ -55,9 +55,9 @@ function extractMessages() {
       timestamp = today.toISOString();
     }
 
-    // 构建 content_html：文本 + 父容器内的图片
+    // 构建 content_html：文本 + 父/祖父容器内的图片
     let contentHtml = `<p>${text.replace(/</g, '&lt;').replace(/>/g, '&gt;')}</p>`;
-    const container = p.parentElement;
+    const container = p.parentElement?.parentElement || p.parentElement;
     if (container) {
       const imgs = container.querySelectorAll('img');
       for (const img of imgs) {
