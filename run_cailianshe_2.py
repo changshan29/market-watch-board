@@ -27,7 +27,6 @@ sys.path.insert(0, str(ROOT))
 
 from scrapers.cls_telegraph import fetch as fetch_cls, poll as poll_cls
 from scrapers.webpage import fetch as fetch_webpage
-from scrapers.wechat import fetch as fetch_wechat
 from scrapers.xueqiu import fetch as fetch_xueqiu
 from scrapers.other import fetch as fetch_other
 from classifier import classify_batch
@@ -80,7 +79,7 @@ def dedup_similar(articles: list[dict], threshold: float = 0.6) -> list[dict]:
 def run_scrapers(cls_only: bool = False, source_filter: str = None) -> list[dict]:
     """
     并发运行各爬虫
-    source_filter: 'webpages', 'xueqiu', 'wechat' 或 None（全部）
+    source_filter: 'webpages', 'xueqiu' 或 None（全部）
     """
     print_step("开始爬取...")
 
@@ -89,15 +88,12 @@ def run_scrapers(cls_only: bool = False, source_filter: str = None) -> list[dict
         tasks["网页"] = fetch_webpage
     elif source_filter == 'xueqiu':
         tasks["雪球"] = fetch_xueqiu
-    elif source_filter == 'wechat':
-        tasks["微信"] = fetch_wechat
     elif cls_only:
         tasks["财联社电报"] = fetch_cls
     else:
         # 全部来源
         tasks["财联社电报"] = fetch_cls
         tasks["网页"]   = fetch_webpage
-        tasks["微信"]   = fetch_wechat
         tasks["雪球"]   = fetch_xueqiu
         tasks["其他"]   = fetch_other
 
@@ -188,7 +184,6 @@ def main():
     parser.add_argument("--poll-cls", action="store_true", help="财联社电报持续轮询（每5秒）")
     parser.add_argument("--webpages-only", action="store_true", help="只爬网页")
     parser.add_argument("--xueqiu-only",   action="store_true", help="只爬雪球")
-    parser.add_argument("--wechat-only",   action="store_true", help="只爬微信")
     parser.add_argument("--fast",     action="store_true", help="快速模式：先保存后分类")
     args = parser.parse_args()
 
@@ -206,8 +201,6 @@ def main():
         source_filter = 'webpages'
     elif args.xueqiu_only:
         source_filter = 'xueqiu'
-    elif args.wechat_only:
-        source_filter = 'wechat'
 
     # 1. 爬取
     articles = run_scrapers(cls_only=args.cls_only, source_filter=source_filter)

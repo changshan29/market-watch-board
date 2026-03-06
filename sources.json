@@ -23,25 +23,6 @@
       "name": "医药豹"
     }
   ],
-  "wechat": [
-    {
-      "name": "财闻私享"
-    },
-    {
-      "name": "财联社"
-    },
-    {
-      "name": "研讯社"
-    },
-    {
-      "name": "看懂龙头股"
-    }
-  ],
-  "other": [],
-  "gmail": {
-    "user": "clsliuxiansheng@gmail.com",
-    "password": "btqcrvjguobpiuyp",
-    "filters": ["dingtalk", "dingding", "alibaba", "钉钉"],
-    "days": 7
-  }
+  "wechat": [],
+  "other": []
 }
