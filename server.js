@@ -326,7 +326,18 @@ const server = http.createServer((req, res) => {
         existingIds.add(uid);
         added++;
       }
-      if (added > 0) fs.writeFileSync(DATA_FILE, JSON.stringify(articles, null, 2));
+      if (added > 0) {
+        // 小作文区域最多保留100条，超出时从末尾删除
+        const MAX_XIAOZUOWEN = 100;
+        const nonFeishu = articles.filter(a => a.source_label !== '小作文');
+        let feishuArts = articles.filter(a => a.source_label === '小作文');
+        if (feishuArts.length > MAX_XIAOZUOWEN) {
+          feishuArts = feishuArts.slice(0, MAX_XIAOZUOWEN); // 已按时间倒序，保留最新的
+        }
+        const merged = [...feishuArts, ...nonFeishu];
+        merged.sort((a, b) => (b.published_at || '').localeCompare(a.published_at || ''));
+        fs.writeFileSync(DATA_FILE, JSON.stringify(merged, null, 2));
+      }
       console.log(`[feishu-msg] received ${Array.isArray(messages) ? messages.length : 1}, added ${added}`);
       res.writeHead(200, { 'Content-Type': 'application/json; charset=utf-8', 'Access-Control-Allow-Origin': '*' });
       res.end(JSON.stringify({ ok: true, added }));
