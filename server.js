@@ -29,7 +29,7 @@ function saveBase64Image(b64) {
     if (!matches) return null;
     const ext = matches[1] === 'jpeg' ? 'jpg' : matches[1];
     const data = matches[2];
-    const hash = require('crypto').createHash('md5').update(data.slice(0, 100)).digest('hex').slice(0, 16);
+    const hash = require('crypto').createHash('md5').update(data).digest('hex').slice(0, 16);
     const filename = `${hash}.${ext}`;
     const localPath = path.join(IMAGES_DIR, filename);
     if (!fs.existsSync(localPath)) {
@@ -444,6 +444,10 @@ const server = http.createServer((req, res) => {
       articlesCount: articles.length,
       latestArticleTime: latestArticle ? latestArticle.published_at : null,
       latestArticleTitle: latestArticle ? latestArticle.title : null,
+      imagesDir: IMAGES_DIR,
+      imagesDirExists: fs.existsSync(IMAGES_DIR),
+      imagesCount: fs.existsSync(IMAGES_DIR) ? fs.readdirSync(IMAGES_DIR).length : 0,
+      imageFiles: fs.existsSync(IMAGES_DIR) ? fs.readdirSync(IMAGES_DIR).slice(0,5) : [],
     }));
     return;
   }
