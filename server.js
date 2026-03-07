@@ -252,6 +252,7 @@ const server = http.createServer((req, res) => {
     const source = url.searchParams.get('source');
     const topic  = url.searchParams.get('topic');
     const q      = url.searchParams.get('q');
+    const slim   = url.searchParams.get('slim') === '1';
     if (source) articles = articles.filter(a => a.source_label === source || a.source_type === source);
     if (topic)  articles = articles.filter(a => a.topic_label === topic);
     if (q) {
@@ -260,6 +261,17 @@ const server = http.createServer((req, res) => {
         (a.title   || '').toLowerCase().includes(lq) ||
         (a.content || '').toLowerCase().includes(lq)
       );
+    }
+    // slim 模式：只返回卡片展示需要的字段，减小传输体积
+    if (slim) {
+      articles = articles.map(a => ({
+        id: a.id, title: a.title, summary: a.summary,
+        source_label: a.source_label, source_type: a.source_type, source_sub: a.source_sub,
+        published_at: a.published_at, url: a.url, topic_label: a.topic_label,
+        industry_label: a.industry_label, kb_matched: a.kb_matched,
+        // 只保留 content_html 里的第一张 img src，供缩略图使用
+        thumb: (() => { const m = (a.content_html||'').match(/<img[^>]+src="([^"]+)"/); return m?m[1]:null; })(),
+      }));
     }
     res.writeHead(200, { 'Content-Type': 'application/json; charset=utf-8', 'Access-Control-Allow-Origin': '*' });
     res.end(JSON.stringify(articles));
@@ -283,6 +295,16 @@ const server = http.createServer((req, res) => {
         console.log('[refresh] done:', stdout.slice(0, 200));
       }
     });
+    return;
+  }
+
+  // GET /api/article/:id — 单篇完整数据（弹窗按需加载）
+  if (req.method === 'GET' && url.pathname.startsWith('/api/article/')) {
+    const id = decodeURIComponent(url.pathname.slice('/api/article/'.length));
+    const articles = readArticles();
+    const a = articles.find(x => x.id === id);
+    res.writeHead(a ? 200 : 404, { 'Content-Type': 'application/json; charset=utf-8', 'Access-Control-Allow-Origin': '*' });
+    res.end(JSON.stringify(a || {}));
     return;
   }
 
