@@ -360,6 +360,7 @@ def _fetch_user_with_selenium(user_id: str, count: int = 20) -> list[dict]:
                     try:
                         time_elem = post.find_element(By.CSS_SELECTOR, "a.date-and-source")
                         href = time_elem.get_attribute("href") or ""
+                        print(f"[xueqiu] href={repr(href)}")
                         id_match = re.search(r'/(\d{10,13})$', href)
                         if id_match:
                             ts = int(id_match.group(1))
