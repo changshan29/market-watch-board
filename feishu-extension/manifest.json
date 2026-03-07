@@ -10,7 +10,9 @@
   "host_permissions": [
     "https://*.feishu.cn/*",
     "https://msg.juliang888.top/*",
+    "https://*.juliang888.top/*",
     "https://market-watch-board-production.up.railway.app/*",
+    "https://web-production-af97c.up.railway.app/*",
     "http://localhost:3220/*"
   ],
   "content_scripts": [
