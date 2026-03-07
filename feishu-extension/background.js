@@ -6,7 +6,7 @@ chrome.runtime.onStartup.addListener(syncInterval);
 
 async function syncInterval() {
   const items = await chrome.storage.local.get(['serverUrl']);
-  const serverUrl = items.serverUrl || 'https://market-watch-board-production.up.railway.app';
+  const serverUrl = items.serverUrl || 'https://web-production-af97c.up.railway.app';
   try {
     const resp = await fetch(serverUrl + '/api/plugin-config');
     const data = await resp.json();
@@ -20,7 +20,11 @@ async function syncInterval() {
 // 把图片 URL 下载转成 base64（Service Worker 无 CORS 限制）
 async function urlToBase64(imgUrl) {
   try {
-    const r = await fetch(imgUrl);
+    // 尝试带 Referer 请求（聚量图片防盗链需要）
+    const referer = new URL(imgUrl).origin;
+    const r = await fetch(imgUrl, {
+      headers: { 'Referer': referer }
+    });
     if (!r.ok) return null;
     const blob = await r.blob();
     const buf = await blob.arrayBuffer();
