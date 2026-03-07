@@ -165,8 +165,22 @@ def save_articles(articles: list[dict], merge: bool = False):
     merged = [a for a in existing_map.values() if a.get("published_at", "") >= cutoff]
     merged.sort(key=lambda a: a.get("published_at", ""), reverse=True)
 
-    ARTICLES_FILE.write_text(json.dumps(merged, ensure_ascii=False, indent=2))
-    print_step(f"已保存到 {ARTICLES_FILE}（共 {len(merged)} 条）")
+    # 按来源类型限制条数（小作文由 server.js 控制，这里只限制网页/雪球）
+    MAX_PER_SOURCE = {"网页": 200, "雪球": 100}
+    result = []
+    source_counts: dict = {}
+    for a in merged:
+        src = a.get("source_label") or a.get("source_type") or ""
+        limit = MAX_PER_SOURCE.get(src)
+        if limit is not None:
+            cnt = source_counts.get(src, 0)
+            if cnt >= limit:
+                continue
+            source_counts[src] = cnt + 1
+        result.append(a)
+
+    ARTICLES_FILE.write_text(json.dumps(result, ensure_ascii=False, indent=2))
+    print_step(f"已保存到 {ARTICLES_FILE}（共 {len(result)} 条）")
 
 
 def notify_server():
