@@ -753,7 +753,6 @@
 
   function cardHtml(a, showSource = false) {
     const kbBadge  = a.kb_matched ? `<span class="badge badge-kb">KB</span>` : '';
-    const topic    = a.topic_label || '其他';
     const srcType  = a.source_type || a.source_label || '';
     const srcBadge = showSource
       ? `<span class="${sourceBadgeClass(srcType)}">${escHtml(srcType)}</span>`
@@ -769,7 +768,6 @@
     return `
     <div class="article-card card" data-id="${escHtml(a.id)}" onclick="openModal('${a.id.replace(/'/g,"\\'")}')">
       <div class="card-badges">
-        <span class="${topicBadgeClass(topic)}">${topic}</span>
         ${srcBadge}
         ${kbBadge}
       </div>
@@ -1057,10 +1055,8 @@
     const a = articleMap[id];
     if (!a) return;
 
-    const topic = a.topic_label || '其他';
     const topicEl = document.getElementById('modal-badge-topic');
-    topicEl.className = 'badge ' + topicBadgeClass(topic);
-    topicEl.textContent = topic;
+    topicEl.style.display = 'none';
 
     document.getElementById('modal-badge-kb').style.display = a.kb_matched ? '' : 'none';
     document.getElementById('modal-title').textContent  = a.title || '（无标题）';
