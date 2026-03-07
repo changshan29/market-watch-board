@@ -357,8 +357,8 @@ const server = http.createServer((req, res) => {
         added++;
       }
       if (added > 0) {
-        // 小作文区域最多保留100条，超出时从末尾删除
-        const MAX_XIAOZUOWEN = 100;
+        // 小作文区域最多保留150条，超出时从末尾删除
+        const MAX_XIAOZUOWEN = 150;
         const nonFeishu = articles.filter(a => a.source_label !== '小作文');
         let feishuArts = articles.filter(a => a.source_label === '小作文');
         if (feishuArts.length > MAX_XIAOZUOWEN) {
