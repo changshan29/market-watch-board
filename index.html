@@ -326,6 +326,8 @@
       border-radius: 4px;
       overflow: hidden;
       max-height: 160px;
+      background: #1e2030; /* 骨架屏背景，图片加载前显示 */
+      min-height: 80px;
     }
     .card-thumb img {
       width: 100%;
@@ -333,7 +335,10 @@
       object-fit: cover;
       display: block;
       border-radius: 4px;
+      transition: opacity 0.2s;
     }
+    .card-thumb img[src] { opacity: 0; }
+    .card-thumb img.loaded { opacity: 1; }
 
     .card-summary {
       font-size: 12px;
@@ -762,7 +767,7 @@
     if (a.content_html) {
       const m = a.content_html.match(/<img[^>]+src="([^"]+)"/);
       if (m) {
-        thumbHtml = `<div class="card-thumb"><img src="${m[1]}" loading="lazy" onerror="this.parentElement.style.display='none'"></div>`;
+        thumbHtml = `<div class="card-thumb"><img src="${m[1]}" loading="lazy" decoding="async" onerror="this.parentElement.style.display='none'"></div>`;
       }
     }
     return `
@@ -801,6 +806,11 @@
 
     // 每次都完整渲染，确保显示正确
     listEl.innerHTML = articles.map(a => cardHtml(a, showSource)).join('');
+    // 图片加载完成后淡入
+    listEl.querySelectorAll('.card-thumb img').forEach(img => {
+      if (img.complete) { img.classList.add('loaded'); }
+      else { img.onload = () => img.classList.add('loaded'); }
+    });
   }
 
   // ── 过滤主面板（主题筛选） ─────────────────────────────────────────────────
