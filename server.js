@@ -168,9 +168,9 @@ function scheduleAutoRefresh() {
     console.log('[auto] running full scraper...');
     lastScrapeTime = new Date().toISOString();
     lastScrapeStatus = 'running';
-    exec('python3 run_cailianshe_2.py --no-kb --fast', {
+    exec('python3 -u run_cailianshe_2.py --no-kb --fast', {
       cwd: __dirname,
-      timeout: 300000,
+      timeout: 480000,
       maxBuffer: 10 * 1024 * 1024
     }, (err, stdout, stderr) => {
       if (err) {
@@ -220,9 +220,9 @@ exec('python3 --version', (err, stdout) => {
 
 lastScrapeTime = new Date().toISOString();
 lastScrapeStatus = 'running (startup)';
-exec('python3 run_cailianshe_2.py --no-kb --fast', {
+exec('python3 -u run_cailianshe_2.py --no-kb --fast', {
   cwd: __dirname,
-  timeout: 300000,  // 60秒超时
+  timeout: 480000,
   maxBuffer: 10 * 1024 * 1024  // 10MB buffer
 }, (err, stdout, stderr) => {
   console.log('[startup] callback triggered');
@@ -328,9 +328,9 @@ const server = http.createServer((req, res) => {
     if (!requireAuth(req, res)) return;
     res.writeHead(200, { 'Content-Type': 'application/json; charset=utf-8', 'Access-Control-Allow-Origin': '*' });
     res.end(JSON.stringify({ status: 'refreshing' }));
-    exec('python3 run_cailianshe_2.py --no-kb --fast', {
+    exec('python3 -u run_cailianshe_2.py --no-kb --fast', {
       cwd: __dirname,
-      timeout: 300000,
+      timeout: 480000,
       maxBuffer: 10 * 1024 * 1024
     }, (err, stdout, stderr) => {
       if (err) {
