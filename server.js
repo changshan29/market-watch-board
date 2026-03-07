@@ -425,6 +425,8 @@ const server = http.createServer((req, res) => {
           published_at: msg.timestamp ? new Date(msg.timestamp).toISOString() : new Date().toISOString(),
           source_label: '小作文',
           feishu: true,
+          feishu_raw_id: String(msg.id || ''),       // 原始飞书消息 ID（雪花 ID 可排序）
+          dom_position: msg.dom_position ?? -1,       // DOM 位置（越大越新）
           topic_label: '其他',
           summary: content.slice(0, 100),
           kb_keywords: [], kb_matched: false, kb_snippets: [],
@@ -441,6 +443,15 @@ const server = http.createServer((req, res) => {
         if (feishuArts.length > MAX_XIAOZUOWEN) {
           feishuArts = feishuArts.slice(0, MAX_XIAOZUOWEN); // 已按时间倒序，保留最新的
         }
+        // 飞书消息排序：published_at 降序；同时间用 dom_position 降序（越靠下 DOM 越新）；
+        // 再用原始消息 ID 降序（飞书雪花 ID，越大越新）
+        feishuArts.sort((a, b) => {
+          const tsCmp = String(b.published_at || '').localeCompare(String(a.published_at || ''));
+          if (tsCmp !== 0) return tsCmp;
+          const posCmp = (b.dom_position ?? -1) - (a.dom_position ?? -1);
+          if (posCmp !== 0) return posCmp;
+          return String(b.feishu_raw_id || '').localeCompare(String(a.feishu_raw_id || ''));
+        });
         const merged = [...feishuArts, ...nonFeishu];
         merged.sort((a, b) => String(b.published_at || '').localeCompare(String(a.published_at || '')));
         fs.writeFileSync(DATA_FILE, JSON.stringify(merged, null, 2));

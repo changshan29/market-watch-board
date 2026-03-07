@@ -72,32 +72,70 @@ function imgToBase64(imgEl) {
   });
 }
 
+// 从飞书 DOM 里的日期分隔文本解析出具体日期
+function parseDateContext(text) {
+  if (!text) return null;
+  const now = new Date();
+  if (/今天/.test(text)) {
+    const d = new Date(now); d.setHours(0, 0, 0, 0); return d;
+  }
+  if (/昨天/.test(text)) {
+    const d = new Date(now); d.setDate(d.getDate() - 1); d.setHours(0, 0, 0, 0); return d;
+  }
+  // YYYY年MM月DD日
+  let m = text.match(/(\d{4})年(\d{1,2})月(\d{1,2})日/);
+  if (m) return new Date(+m[1], +m[2] - 1, +m[3], 0, 0, 0, 0);
+  // MM月DD日（当年，未来则取上一年）
+  m = text.match(/(\d{1,2})月(\d{1,2})日/);
+  if (m) {
+    const d = new Date(now.getFullYear(), +m[1] - 1, +m[2], 0, 0, 0, 0);
+    if (d > now) d.setFullYear(d.getFullYear() - 1);
+    return d;
+  }
+  return null;
+}
+
 async function extractMessages() {
   const items = document.querySelectorAll('[data-id].messageItem-wrapper');
   if (items.length === 0) return [];
 
+  // 找消息列表的父容器，同时扫描日期分隔符（与消息混排在 DOM 中）
+  const container = items[0].parentElement;
+  const allNodes = container ? [...container.children] : [...items];
+
   const msgs = [];
   let lastSender = '';
   let lastTime = '';
+  let currentDateCtx = new Date(); // 当前日期上下文，默认今天
+  currentDateCtx.setHours(0, 0, 0, 0);
+  let domPosition = 0; // DOM 从上（旧）到下（新），position 越大越新
 
-  for (const item of items) {
-    const msgId = item.getAttribute('data-id');
-    if (!msgId) continue;
+  for (const el of allNodes) {
+    const msgId = el.getAttribute('data-id');
 
-    const senderEl = item.querySelector('.message-info-name');
+    if (!msgId) {
+      // 非消息元素：尝试解析日期上下文（今天 / 昨天 / 3月5日 等）
+      const txt = (el.innerText || el.textContent || '').trim();
+      const ctx = parseDateContext(txt);
+      if (ctx) currentDateCtx = ctx;
+      continue;
+    }
+
+    // 消息元素
+    const senderEl = el.querySelector('.message-info-name');
     if (senderEl?.innerText.trim()) lastSender = senderEl.innerText.trim();
 
-    const timeEl = item.querySelector('.message-timestamp');
+    const timeEl = el.querySelector('.message-timestamp');
     if (timeEl?.innerText.trim()) lastTime = timeEl.innerText.trim();
 
     let timestamp = new Date().toISOString();
     if (lastTime) {
       const m = lastTime.match(/^(\d{1,2}):(\d{2})(?::(\d{2}))?/);
       if (m) {
-        const now = new Date();
-        const d = new Date();
+        const d = new Date(currentDateCtx);
         d.setHours(+m[1], +m[2], +(m[3] || 0), 0);
-        // 如果解析出来的时间比现在晚超过5分钟，说明是昨天的消息
+        // 如果算出来比现在晚超过5分钟，往前退一天
+        const now = new Date();
         if (d > now && (d - now) > 5 * 60 * 1000) {
           d.setDate(d.getDate() - 1);
         }
@@ -105,13 +143,14 @@ async function extractMessages() {
       }
     }
 
-    const richEl = item.querySelector('.richTextContainer');
+    const richEl = el.querySelector('.richTextContainer');
     if (richEl?.innerText.trim()) {
-      msgs.push({ msgId, sender: lastSender, text: richEl.innerText.trim(), timestamp, images: [] });
+      msgs.push({ msgId, sender: lastSender, text: richEl.innerText.trim(), timestamp, images: [], domPosition });
+      domPosition++;
       continue;
     }
 
-    const imgEls = item.querySelectorAll(
+    const imgEls = el.querySelectorAll(
       '.im-image-message img, .message-content img, [class*="image-message"] img, .messenger-image__img'
     );
     if (imgEls.length > 0) {
@@ -122,7 +161,8 @@ async function extractMessages() {
         if (b64) imageBase64s.push(b64);
       }
       if (imageBase64s.length > 0) {
-        msgs.push({ msgId, sender: lastSender, text: '[图片]', timestamp, images: imageBase64s });
+        msgs.push({ msgId, sender: lastSender, text: '[图片]', timestamp, images: imageBase64s, domPosition });
+        domPosition++;
       }
     }
   }
@@ -163,6 +203,7 @@ async function collectAndSend() {
       sender: msg.sender,
       group_name: groupName,
       timestamp: msg.timestamp,
+      dom_position: msg.domPosition,
     });
   }
 
@@ -203,7 +244,7 @@ async function pushAllVisible(serverUrl, groupName) {
   const sentIds = getSentIds();
   const toSend = msgs.map(msg => {
     sentIds.add(msg.msgId);
-    return { id: msg.msgId, text: msg.text, images: msg.images || [], sender: msg.sender, group_name: groupName, timestamp: msg.timestamp };
+    return { id: msg.msgId, text: msg.text, images: msg.images || [], sender: msg.sender, group_name: groupName, timestamp: msg.timestamp, dom_position: msg.domPosition };
   });
   saveSentIds(sentIds);
 

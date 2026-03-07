@@ -163,37 +163,77 @@ def _parse_time_text(time_text: str) -> str:
     if m:
         return (now - timedelta(days=int(m.group(1)) * 30)).isoformat()
     # 今天 HH:MM
-    m = re.match(r'今天\s+(\d{1,2}):(\d{2})', t)
+    m = re.search(r'今天\s+(\d{1,2}):(\d{2})', t)
     if m:
         return now.replace(hour=int(m.group(1)), minute=int(m.group(2)), second=0, microsecond=0).isoformat()
-    # 昨天 HH:MM
-    m = re.match(r'昨天\s+(\d{1,2}):(\d{2})', t)
-    if m:
+    # 昨天 HH:MM 或 昨天
+    m = re.search(r'昨天\s*(\d{1,2})?:?(\d{2})?', t)
+    if m and '昨天' in t:
         d = now - timedelta(days=1)
-        return d.replace(hour=int(m.group(1)), minute=int(m.group(2)), second=0, microsecond=0).isoformat()
-    # YYYY-MM-DD HH:MM
-    m = re.match(r'(\d{4})-(\d{1,2})-(\d{1,2})\s+(\d{1,2}):(\d{2})', t)
+        if m.group(1) and m.group(2):
+            return d.replace(hour=int(m.group(1)), minute=int(m.group(2)), second=0, microsecond=0).isoformat()
+        return d.replace(hour=0, minute=0, second=0, microsecond=0).isoformat()
+    # YYYY-MM-DD HH:MM[:SS]
+    m = re.search(r'(\d{4})-(\d{1,2})-(\d{1,2})\s+(\d{1,2}):(\d{2})', t)
     if m:
         try:
             return datetime(int(m.group(1)), int(m.group(2)), int(m.group(3)),
                             int(m.group(4)), int(m.group(5)), tzinfo=CHINA_TZ).isoformat()
         except Exception:
             pass
-    # MM-DD HH:MM（当年）
-    m = re.match(r'(\d{1,2})-(\d{1,2})\s+(\d{1,2}):(\d{2})', t)
+    # YYYY年MM月DD日 HH:MM（带时间）
+    m = re.search(r'(\d{4})年(\d{1,2})月(\d{1,2})日\s+(\d{1,2}):(\d{2})', t)
+    if m:
+        try:
+            return datetime(int(m.group(1)), int(m.group(2)), int(m.group(3)),
+                            int(m.group(4)), int(m.group(5)), tzinfo=CHINA_TZ).isoformat()
+        except Exception:
+            pass
+    # MM月DD日 HH:MM（当年）
+    m = re.search(r'(\d{1,2})月(\d{1,2})日\s+(\d{1,2}):(\d{2})', t)
     if m:
         try:
             candidate = now.replace(month=int(m.group(1)), day=int(m.group(2)),
                                     hour=int(m.group(3)), minute=int(m.group(4)),
                                     second=0, microsecond=0)
-            # 如果算出来是未来，说明是去年
+            if candidate > now:
+                candidate = candidate.replace(year=now.year - 1)
+            return candidate.isoformat()
+        except Exception:
+            pass
+    # YYYY年MM月DD日（仅日期）
+    m = re.search(r'(\d{4})年(\d{1,2})月(\d{1,2})日', t)
+    if m:
+        try:
+            return datetime(int(m.group(1)), int(m.group(2)), int(m.group(3)),
+                            tzinfo=CHINA_TZ).isoformat()
+        except Exception:
+            pass
+    # MM月DD日（仅日期，当年）
+    m = re.search(r'(\d{1,2})月(\d{1,2})日', t)
+    if m:
+        try:
+            candidate = now.replace(month=int(m.group(1)), day=int(m.group(2)),
+                                    hour=0, minute=0, second=0, microsecond=0)
+            if candidate > now:
+                candidate = candidate.replace(year=now.year - 1)
+            return candidate.isoformat()
+        except Exception:
+            pass
+    # MM-DD HH:MM（当年）
+    m = re.search(r'(\d{1,2})-(\d{1,2})\s+(\d{1,2}):(\d{2})', t)
+    if m:
+        try:
+            candidate = now.replace(month=int(m.group(1)), day=int(m.group(2)),
+                                    hour=int(m.group(3)), minute=int(m.group(4)),
+                                    second=0, microsecond=0)
             if candidate > now:
                 candidate = candidate.replace(year=now.year - 1)
             return candidate.isoformat()
         except Exception:
             pass
     # HH:MM（今天）
-    m = re.match(r'(\d{1,2}):(\d{2})$', t)
+    m = re.search(r'\b(\d{1,2}):(\d{2})\b', t)
     if m:
         return now.replace(hour=int(m.group(1)), minute=int(m.group(2)), second=0, microsecond=0).isoformat()
 
@@ -329,7 +369,10 @@ def _fetch_user_with_selenium(user_id: str, count: int = 20) -> list[dict]:
                             published_at = datetime.fromtimestamp(ts, tz=CHINA_TZ).isoformat()
                         else:
                             # fallback：解析相对时间文本
-                            time_text = (time_elem.get_attribute("title") or time_elem.text or "").strip()
+                            raw_title = time_elem.get_attribute("title") or ""
+                            raw_text  = time_elem.text or ""
+                            time_text = (raw_title or raw_text).strip()
+                            print(f"[xueqiu] 时间文本 title={repr(raw_title)} text={repr(raw_text)}")
                             published_at = _parse_time_text(time_text)
                     except Exception as te:
                         print(f"[xueqiu] 时间解析失败: {te}")
