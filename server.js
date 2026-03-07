@@ -67,7 +67,7 @@ function downloadImage(imgUrl) {
   });
 }
 
-const PORT          = 3220;
+const PORT          = process.env.PORT || 3220;
 const DATA_FILE     = path.join(__dirname, 'data', 'articles.json');
 const INDEX_FILE    = path.join(__dirname, 'index.html');
 const ADMIN_FILE    = path.join(__dirname, 'admin.html');
