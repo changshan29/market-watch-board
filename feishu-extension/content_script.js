@@ -34,7 +34,28 @@ function isRuntimeAlive() {
   catch { return false; }
 }
 
-// 把 img 元素（含 blob URL）转成压缩后的 base64
+// 自动识别当前群名（从飞书页面 DOM 提取）
+function detectGroupName() {
+  // 飞书网页版群名常见位置
+  const selectors = [
+    '.chat-header-title',
+    '.nav-bar-title',
+    '[data-testid="chat-header-title"]',
+    '.conversation-title',
+    '.im-header__title',
+    '.title-text',
+  ];
+  for (const sel of selectors) {
+    const el = document.querySelector(sel);
+    if (el?.innerText?.trim()) return el.innerText.trim();
+  }
+  // fallback：取页面 title（飞书网页 tab title 一般是"群名 - 飞书"）
+  const t = document.title.replace(/\s*[-–|]\s*(飞书|Lark).*$/i, '').trim();
+  if (t && t.length < 50) return t;
+  return null;
+}
+
+
 function imgToBase64(imgEl) {
   return new Promise(resolve => {
     try {
@@ -120,7 +141,8 @@ async function pushMessages(serverUrl, messages) {
 }
 
 async function collectAndSend() {
-  const { serverUrl, groupName } = await getConfig();
+  const { serverUrl, groupName: configGroupName } = await getConfig();
+  const groupName = detectGroupName() || configGroupName; // 优先自动识别
   const msgs = await extractMessages();
 
   const sentIds = getSentIds();
@@ -158,7 +180,36 @@ async function collectAndSend() {
   }
 }
 
-// ── 主循环：带自动重连 ───────────────────────────────────────────────────────
+// 检查服务器小作文数量
+async function getServerXzwCount(serverUrl) {
+  try {
+    const resp = await fetch(serverUrl + '/api/articles?source=%E5%B0%8F%E4%BD%9C%E6%96%87', { signal: AbortSignal.timeout(5000) });
+    const data = await resp.json();
+    return Array.isArray(data) ? data.length : 0;
+  } catch { return -1; }
+}
+
+// 全量推送当前页面所有消息（忽略 sentIds，用于补数据）
+async function pushAllVisible(serverUrl, groupName) {
+  console.log('[飞书采集] 服务器小作文为空，全量推送当前页面消息...');
+  const msgs = await extractMessages();
+  if (msgs.length === 0) { console.log('[飞书采集] 当前页面无消息'); return; }
+
+  const sentIds = getSentIds();
+  const toSend = msgs.map(msg => {
+    sentIds.add(msg.msgId);
+    return { id: msg.msgId, text: msg.text, images: msg.images || [], sender: msg.sender, group_name: groupName, timestamp: msg.timestamp };
+  });
+  saveSentIds(sentIds);
+
+  const textMsgs = toSend.filter(m => m.images.length === 0);
+  const imgMsgs  = toSend.filter(m => m.images.length > 0);
+  if (textMsgs.length > 0) await pushMessages(serverUrl, textMsgs);
+  for (const m of imgMsgs) await pushMessages(serverUrl, [m]);
+  console.log(`[飞书采集] 全量推送完成，共 ${toSend.length} 条`);
+}
+
+
 let _collectTimer = null;
 let _reconnectTimer = null;
 let _interval = INTERVAL_MS;
@@ -197,6 +248,14 @@ function startHeartbeat() {
 setTimeout(async () => {
   const config = await getConfig();
   _interval = config.interval || INTERVAL_MS;
+
+  // 启动时检查服务器小作文是否为空，为空则全量推送
+  const xzwCount = await getServerXzwCount(config.serverUrl);
+  const groupName = detectGroupName() || config.groupName;
+  if (xzwCount === 0) {
+    await pushAllVisible(config.serverUrl, groupName);
+  }
+
   startCollecting();
   startHeartbeat();
 }, 5000);
