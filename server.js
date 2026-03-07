@@ -298,6 +298,16 @@ const server = http.createServer((req, res) => {
     return;
   }
 
+  // POST /api/clear — 清空所有文章数据（需要密码）
+  if (req.method === 'POST' && url.pathname === '/api/clear') {
+    if (!requireAuth(req, res)) return;
+    fs.writeFileSync(DATA_FILE, '[]');
+    res.writeHead(200, { 'Content-Type': 'application/json; charset=utf-8', 'Access-Control-Allow-Origin': '*' });
+    res.end(JSON.stringify({ ok: true, msg: '数据已清空' }));
+    console.log('[clear] articles.json cleared');
+    return;
+  }
+
   // GET /api/article/:id — 单篇完整数据（弹窗按需加载）
   if (req.method === 'GET' && url.pathname.startsWith('/api/article/')) {
     const id = decodeURIComponent(url.pathname.slice('/api/article/'.length));
