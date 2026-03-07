@@ -7,7 +7,7 @@ function getConfig() {
   return new Promise(resolve => {
     chrome.storage.local.get(['serverUrl', 'juliangGroupName', 'pluginInterval'], items => {
       resolve({
-        serverUrl: items.serverUrl || 'http://localhost:3220',
+        serverUrl: items.serverUrl || 'https://web-production-af97c.up.railway.app',
         groupName: items.juliangGroupName || '聚量群',
         interval: (items.pluginInterval || 60) * 1000,
       });
