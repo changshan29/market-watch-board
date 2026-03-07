@@ -739,7 +739,10 @@
   function fmtTime(iso) {
     if (!iso) return '';
     try {
-      const d = new Date(iso);
+      // 去掉超过3位的小数秒（JS Date只支持毫秒）
+      const cleaned = iso.replace(/(\.\d{3})\d+/, '$1');
+      const d = new Date(cleaned);
+      if (isNaN(d)) return iso.slice(0, 16);
       return `${String(d.getMonth()+1).padStart(2,'0')}-${String(d.getDate()).padStart(2,'0')} `
            + `${String(d.getHours()).padStart(2,'0')}:${String(d.getMinutes()).padStart(2,'0')}`;
     } catch { return iso.slice(0,16); }
@@ -826,7 +829,17 @@
     }
     renderPanel('list-web',    'cnt-web',    filter('网页'));
     renderPanel('list-xueqiu', 'cnt-xueqiu', filter('雪球'));
-    renderPanel('list-wechat', 'cnt-wechat', filter('小作文'));
+
+    // 小作文：如果没有飞书消息，fallback 显示最近30条（所有来源）
+    const xiaozuowen = filter('小作文');
+    if (xiaozuowen.length === 0) {
+      const fallback = [...allArticles]
+        .sort((a, b) => String(b.published_at || '').localeCompare(String(a.published_at || '')))
+        .slice(0, 30);
+      renderPanel('list-wechat', 'cnt-wechat', fallback, true);
+    } else {
+      renderPanel('list-wechat', 'cnt-wechat', xiaozuowen);
+    }
   }
 
   // ── AI 筛选 ───────────────────────────────────────────────────────────────

@@ -1,7 +1,7 @@
 """
 scrapers/xueqiu.py — 雪球广场爬取
 
-使用Selenium绕过WAF，获取用户时间线数据。
+优先使用 HTTP API（无需浏览器），失败时退回 Selenium。
 若 sources.json 配置了指定用户（xueqiu[]），则爬取对应用户时间线。
 
 统一返回格式：
@@ -11,6 +11,7 @@ scrapers/xueqiu.py — 雪球广场爬取
 import json
 import re
 import time
+import requests
 from datetime import datetime, timezone, timedelta
 from pathlib import Path
 
@@ -22,11 +23,13 @@ SOURCES_FILE = Path(__file__).parent.parent / "sources.json"
 STATE_FILE = Path(__file__).parent.parent / "data" / "xueqiu_state.json"  # 记录爬取进度
 
 # 每次爬取的用户数量（可调整）
-BATCH_SIZE = 20
-STATE_FILE = Path(__file__).parent.parent / "data" / "xueqiu_state.json"  # 记录爬取进度
-
-# 每次爬取的用户数量（可调整）
 BATCH_SIZE = 5
+
+# API 请求头
+_API_HEADERS = {
+    'User-Agent': 'Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36',
+    'Referer': 'https://xueqiu.com/',
+}
 
 # 尝试导入Selenium，如果失败则标记为不可用
 try:
@@ -41,17 +44,174 @@ except ImportError:
     print("[xueqiu] Selenium未安装，雪球爬虫不可用")
 
 
+def _make_article(post_id, content, username, user_id, published_at, url=None):
+    title = content[:40] + ("…" if len(content) > 40 else "")
+    return {
+        "id": str(post_id),
+        "title": title,
+        "content": content[:2000],
+        "content_html": "",
+        "source_type": "雪球",
+        "source_sub": username,
+        "url": url or f"https://xueqiu.com/u/{user_id}",
+        "published_at": published_at,
+        "source_label": "雪球",
+        "topic_label": "",
+        "summary": content[:100] + ("…" if len(content) > 100 else ""),
+        "kb_keywords": [],
+        "kb_matched": False,
+        "kb_snippets": [],
+    }
+
+
+def _fetch_user_with_api(user_id: str, count: int = 20) -> list[dict]:
+    """使用雪球 JSON API 获取用户时间线（无需 Selenium）"""
+    session = requests.Session()
+    session.headers.update(_API_HEADERS)
+
+    try:
+        # 先访问主页，获取 cookie（xq_a_token）
+        session.get("https://xueqiu.com/", timeout=15)
+        time.sleep(1)
+
+        resp = session.get(
+            "https://xueqiu.com/v4/statuses/user_timeline.json",
+            params={"user_id": user_id, "page": 1, "count": count, "type": ""},
+            timeout=15,
+        )
+        resp.raise_for_status()
+        data = resp.json()
+        statuses = data.get("statuses", [])
+        if not statuses:
+            print(f"[xueqiu-api] user {user_id}: 返回空列表（可能需要登录或已被限流）")
+            return []
+
+        articles = []
+        username = "雪球用户"
+
+        for status in statuses:
+            try:
+                # 用户名
+                u = status.get("user") or {}
+                if u.get("screen_name"):
+                    username = u["screen_name"]
+
+                # 内容
+                raw = status.get("text") or status.get("description") or ""
+                content = re.sub(r"<[^>]+>", " ", raw).strip()
+                content = re.sub(r"\s+", " ", content).strip()
+                if not content or len(content) < 5:
+                    continue
+
+                # 时间（created_at 为毫秒时间戳）
+                created_ms = status.get("created_at") or 0
+                if created_ms:
+                    published_at = datetime.fromtimestamp(
+                        created_ms / 1000, tz=CHINA_TZ
+                    ).isoformat()
+                else:
+                    published_at = datetime.now(tz=CHINA_TZ).isoformat()
+
+                # URL
+                target = status.get("target") or ""
+                post_url = (
+                    f"https://xueqiu.com{target}"
+                    if target.startswith("/")
+                    else (target or f"https://xueqiu.com/u/{user_id}")
+                )
+                post_id = str(status.get("id") or abs(hash(content)))
+
+                articles.append(_make_article(post_id, content, username, user_id, published_at, post_url))
+            except Exception:
+                continue
+
+        return articles
+
+    except Exception as e:
+        print(f"[xueqiu-api] user {user_id} 失败: {e}")
+        return []
+
+
+def _parse_time_text(time_text: str) -> str:
+    """解析雪球时间文本为 ISO 字符串，覆盖所有已知格式"""
+    now = datetime.now(tz=CHINA_TZ)
+    t = time_text.strip()
+    if not t:
+        return now.isoformat()
+
+    # 刚刚
+    if "刚刚" in t:
+        return now.isoformat()
+    # N分钟前
+    m = re.search(r'(\d+)\s*分钟前', t)
+    if m:
+        return (now - timedelta(minutes=int(m.group(1)))).isoformat()
+    # N小时前
+    m = re.search(r'(\d+)\s*小时前', t)
+    if m:
+        return (now - timedelta(hours=int(m.group(1)))).isoformat()
+    # N天前
+    m = re.search(r'(\d+)\s*天前', t)
+    if m:
+        return (now - timedelta(days=int(m.group(1)))).isoformat()
+    # N周前
+    m = re.search(r'(\d+)\s*周前', t)
+    if m:
+        return (now - timedelta(weeks=int(m.group(1)))).isoformat()
+    # N月前（近似30天）
+    m = re.search(r'(\d+)\s*月前', t)
+    if m:
+        return (now - timedelta(days=int(m.group(1)) * 30)).isoformat()
+    # 今天 HH:MM
+    m = re.match(r'今天\s+(\d{1,2}):(\d{2})', t)
+    if m:
+        return now.replace(hour=int(m.group(1)), minute=int(m.group(2)), second=0, microsecond=0).isoformat()
+    # 昨天 HH:MM
+    m = re.match(r'昨天\s+(\d{1,2}):(\d{2})', t)
+    if m:
+        d = now - timedelta(days=1)
+        return d.replace(hour=int(m.group(1)), minute=int(m.group(2)), second=0, microsecond=0).isoformat()
+    # YYYY-MM-DD HH:MM
+    m = re.match(r'(\d{4})-(\d{1,2})-(\d{1,2})\s+(\d{1,2}):(\d{2})', t)
+    if m:
+        try:
+            return datetime(int(m.group(1)), int(m.group(2)), int(m.group(3)),
+                            int(m.group(4)), int(m.group(5)), tzinfo=CHINA_TZ).isoformat()
+        except Exception:
+            pass
+    # MM-DD HH:MM（当年）
+    m = re.match(r'(\d{1,2})-(\d{1,2})\s+(\d{1,2}):(\d{2})', t)
+    if m:
+        try:
+            candidate = now.replace(month=int(m.group(1)), day=int(m.group(2)),
+                                    hour=int(m.group(3)), minute=int(m.group(4)),
+                                    second=0, microsecond=0)
+            # 如果算出来是未来，说明是去年
+            if candidate > now:
+                candidate = candidate.replace(year=now.year - 1)
+            return candidate.isoformat()
+        except Exception:
+            pass
+    # HH:MM（今天）
+    m = re.match(r'(\d{1,2}):(\d{2})$', t)
+    if m:
+        return now.replace(hour=int(m.group(1)), minute=int(m.group(2)), second=0, microsecond=0).isoformat()
+
+    print(f"[xueqiu] 无法解析时间文本: {repr(t)}")
+    return now.isoformat()
+
+
 def _create_driver():
     """创建无头Chrome浏览器"""
     options = Options()
-    options.add_argument('--headless')
+    options.add_argument('--headless=new')
     options.add_argument('--no-sandbox')
     options.add_argument('--disable-dev-shm-usage')
     options.add_argument('--disable-gpu')
     options.add_argument('--disable-blink-features=AutomationControlled')
     options.add_argument('--user-agent=Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36')
 
-    # 内存优化（适配 Render 512MB 限制）
+    # 内存优化（适配 Railway/Render 512MB 限制）
     options.add_argument('--disable-extensions')
     options.add_argument('--disable-software-rasterizer')
     options.add_argument('--disable-background-networking')
@@ -59,12 +219,12 @@ def _create_driver():
     options.add_argument('--disable-sync')
     options.add_argument('--disable-translate')
     options.add_argument('--hide-scrollbars')
-    options.add_argument('--metrics-recording-only')
     options.add_argument('--mute-audio')
     options.add_argument('--no-first-run')
     options.add_argument('--safebrowsing-disable-auto-update')
-    options.add_argument('--single-process')  # 单进程模式，减少内存占用
     options.add_argument('--window-size=1280,720')
+    options.add_argument('--memory-pressure-off')
+    options.add_argument('--js-flags=--max-old-space-size=256')
 
     # 隐藏webdriver特征
     options.add_experimental_option("excludeSwitches", ["enable-automation"])
@@ -170,48 +330,11 @@ def _fetch_user_with_selenium(user_id: str, count: int = 20) -> list[dict]:
                         else:
                             # fallback：解析相对时间文本
                             time_text = (time_elem.get_attribute("title") or time_elem.text or "").strip()
-                            print(f"[xueqiu] 时间文本fallback: {repr(time_text)}")
-                            now = datetime.now(tz=CHINA_TZ)
-                            m = re.match(r'今天\s+(\d{1,2}):(\d{2})', time_text)
-                            if m:
-                                published_at = now.replace(hour=int(m.group(1)), minute=int(m.group(2)), second=0, microsecond=0).isoformat()
-                            else:
-                                m = re.match(r'(\d{1,2})-(\d{1,2})\s+(\d{1,2}):(\d{2})', time_text)
-                                if m:
-                                    published_at = now.replace(month=int(m.group(1)), day=int(m.group(2)), hour=int(m.group(3)), minute=int(m.group(4)), second=0, microsecond=0).isoformat()
-                                else:
-                                    m = re.match(r'(\d{1,2}):(\d{2})', time_text)
-                                    if m:
-                                        published_at = now.replace(hour=int(m.group(1)), minute=int(m.group(2)), second=0, microsecond=0).isoformat()
-                                    else:
-                                        m = re.match(r'(\d+)\s*分钟前', time_text)
-                                        if m:
-                                            published_at = (now - timedelta(minutes=int(m.group(1)))).isoformat()
-                                        else:
-                                            m = re.match(r'(\d+)\s*小时前', time_text)
-                                            if m:
-                                                published_at = (now - timedelta(hours=int(m.group(1)))).isoformat()
-                                            elif '刚刚' in time_text:
-                                                published_at = now.isoformat()
+                            published_at = _parse_time_text(time_text)
                     except Exception as te:
                         print(f"[xueqiu] 时间解析失败: {te}")
 
-                    articles.append({
-                        "id": post_id,
-                        "title": title,
-                        "content": content[:2000],
-                        "content_html": "",
-                        "source_type": "雪球",
-                        "source_sub": username,
-                        "url": url,
-                        "published_at": published_at,
-                        "source_label": "雪球",
-                        "topic_label": "",
-                        "summary": content[:100] + ("…" if len(content) > 100 else ""),
-                        "kb_keywords": [],
-                        "kb_matched": False,
-                        "kb_snippets": [],
-                    })
+                    articles.append(_make_article(post_id, content, username, user_id, published_at, url))
 
                 except Exception as e:
                     continue
@@ -252,11 +375,6 @@ def fetch(count: int = 20) -> list[dict]:
     若 sources.json 配置了雪球用户，则爬取用户时间线。
     网络失败时返回空列表，不抛出异常。
     """
-    # 检查Selenium是否可用
-    if not SELENIUM_AVAILABLE:
-        print("[xueqiu] Selenium未安装，跳过雪球爬取")
-        return []
-
     try:
         raw_sources = json.loads(SOURCES_FILE.read_text())
         xq_users = raw_sources.get("xueqiu", [])
@@ -290,7 +408,15 @@ def fetch(count: int = 20) -> list[dict]:
 
     for user in batch_users:
         uid = user.get("id") or user.get("user_id")
-        items = _fetch_user_with_selenium(str(uid), count)
+
+        # 优先 API，失败再用 Selenium
+        items = _fetch_user_with_api(str(uid), count)
+        if not items:
+            print(f"[xueqiu] API失败，尝试Selenium: user {uid}")
+            if SELENIUM_AVAILABLE:
+                items = _fetch_user_with_selenium(str(uid), count)
+            else:
+                print("[xueqiu] Selenium不可用，跳过")
 
         # 如果获取到文章且用户名为空，自动更新用户名
         if items and not user.get("name"):
