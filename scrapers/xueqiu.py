@@ -155,44 +155,44 @@ def _fetch_user_with_selenium(user_id: str, count: int = 20) -> list[dict]:
                         url = f"https://xueqiu.com/u/{user_id}"
 
                     # 提取时间（从 date-and-source 元素文本或 title 属性）
+                    # 提取时间：优先从帖子ID推算（雪球帖子ID是13位毫秒时间戳）
                     published_at = datetime.now(tz=CHINA_TZ).isoformat()
                     try:
                         time_elem = post.find_element(By.CSS_SELECTOR, "a.date-and-source")
-                        # 雪球时间格式：'今天 14:30' / '03-07 14:30' / '2026-03-07' / '14:30' / '刚刚' / 'X分钟前' 等
-                        time_text = (time_elem.get_attribute("title") or time_elem.text or "").strip()
-                        print(f"[xueqiu] 原始时间文本: {repr(time_text)}")
-                        if time_text:
+                        href = time_elem.get_attribute("href") or ""
+                        id_match = re.search(r'/(\d{10,13})$', href)
+                        if id_match:
+                            ts = int(id_match.group(1))
+                            # 13位是毫秒，10位是秒
+                            if ts > 1e12:
+                                ts = ts / 1000
+                            published_at = datetime.fromtimestamp(ts, tz=CHINA_TZ).isoformat()
+                        else:
+                            # fallback：解析相对时间文本
+                            time_text = (time_elem.get_attribute("title") or time_elem.text or "").strip()
+                            print(f"[xueqiu] 时间文本fallback: {repr(time_text)}")
                             now = datetime.now(tz=CHINA_TZ)
-                            # 今天 HH:MM
                             m = re.match(r'今天\s+(\d{1,2}):(\d{2})', time_text)
                             if m:
                                 published_at = now.replace(hour=int(m.group(1)), minute=int(m.group(2)), second=0, microsecond=0).isoformat()
                             else:
-                                # MM-DD HH:MM
                                 m = re.match(r'(\d{1,2})-(\d{1,2})\s+(\d{1,2}):(\d{2})', time_text)
                                 if m:
-                                    published_at = now.replace(month=int(m.group(1)), day=int(m.group(2)),
-                                        hour=int(m.group(3)), minute=int(m.group(4)), second=0, microsecond=0).isoformat()
+                                    published_at = now.replace(month=int(m.group(1)), day=int(m.group(2)), hour=int(m.group(3)), minute=int(m.group(4)), second=0, microsecond=0).isoformat()
                                 else:
-                                    # 纯 HH:MM
                                     m = re.match(r'(\d{1,2}):(\d{2})', time_text)
                                     if m:
                                         published_at = now.replace(hour=int(m.group(1)), minute=int(m.group(2)), second=0, microsecond=0).isoformat()
                                     else:
-                                        # X分钟前
                                         m = re.match(r'(\d+)\s*分钟前', time_text)
                                         if m:
-                                            from datetime import timedelta
                                             published_at = (now - timedelta(minutes=int(m.group(1)))).isoformat()
                                         else:
-                                            # X小时前
                                             m = re.match(r'(\d+)\s*小时前', time_text)
                                             if m:
-                                                from datetime import timedelta
                                                 published_at = (now - timedelta(hours=int(m.group(1)))).isoformat()
-                                        # 刚刚
-                                        elif '刚刚' in time_text:
-                                            published_at = now.isoformat()
+                                            elif '刚刚' in time_text:
+                                                published_at = now.isoformat()
                     except Exception as te:
                         print(f"[xueqiu] 时间解析失败: {te}")
 
