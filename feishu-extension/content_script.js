@@ -1,17 +1,21 @@
 // 飞书消息采集 content_script.js
 // 每60秒扫描飞书群聊 DOM，将新消息推送到服务器
+// 含自动重连机制：runtime 断连后自动恢复
 
 const INTERVAL_MS = 60 * 1000;
+const RECONNECT_MS = 5 * 1000; // 断连后每5秒尝试重连
 
 function getConfig() {
   return new Promise(resolve => {
-    chrome.storage.local.get(['serverUrl', 'groupName', 'pluginInterval'], items => {
-      resolve({
-        serverUrl: items.serverUrl || 'https://market-watch-board-production.up.railway.app',
-        groupName: items.groupName || '飞书群',
-        interval: (items.pluginInterval || 60) * 1000,
+    try {
+      chrome.storage.local.get(['serverUrl', 'groupName', 'pluginInterval'], items => {
+        resolve({
+          serverUrl: items.serverUrl || 'https://web-production-af97c.up.railway.app',
+          groupName: items.groupName || '飞书群',
+          interval: (items.pluginInterval || 60) * 1000,
+        });
       });
-    });
+    } catch { resolve({ serverUrl: 'https://web-production-af97c.up.railway.app', groupName: '飞书群', interval: INTERVAL_MS }); }
   });
 }
 
@@ -24,11 +28,17 @@ function saveSentIds(set) {
   sessionStorage.setItem('_feishu_sent', JSON.stringify([...set].slice(-2000)));
 }
 
+// 检查 runtime 是否可用
+function isRuntimeAlive() {
+  try { return !!(chrome.runtime && chrome.runtime.id); }
+  catch { return false; }
+}
+
 // 把 img 元素（含 blob URL）转成压缩后的 base64
 function imgToBase64(imgEl) {
   return new Promise(resolve => {
     try {
-      const MAX = 800; // 限制尺寸，控制 base64 大小
+      const MAX = 800;
       let w = imgEl.naturalWidth || imgEl.width || 200;
       let h = imgEl.naturalHeight || imgEl.height || 200;
       if (w > MAX) { h = Math.round(h * MAX / w); w = MAX; }
@@ -36,7 +46,7 @@ function imgToBase64(imgEl) {
       const canvas = document.createElement('canvas');
       canvas.width = w; canvas.height = h;
       canvas.getContext('2d').drawImage(imgEl, 0, 0, w, h);
-      resolve(canvas.toDataURL('image/jpeg', 0.7)); // 0.7 质量，更小
+      resolve(canvas.toDataURL('image/jpeg', 0.7));
     } catch { resolve(null); }
   });
 }
@@ -69,14 +79,12 @@ async function extractMessages() {
       }
     }
 
-    // 文字消息
     const richEl = item.querySelector('.richTextContainer');
     if (richEl?.innerText.trim()) {
       msgs.push({ msgId, sender: lastSender, text: richEl.innerText.trim(), timestamp, images: [] });
       continue;
     }
 
-    // 图片消息（最多3张，避免 payload 过大）
     const imgEls = item.querySelectorAll(
       '.im-image-message img, .message-content img, [class*="image-message"] img, .messenger-image__img'
     );
@@ -95,9 +103,25 @@ async function extractMessages() {
   return msgs;
 }
 
+// 直接用 fetch 推送（不依赖 background，避免 runtime 断连问题）
+async function pushMessages(serverUrl, messages) {
+  try {
+    const resp = await fetch(serverUrl + '/api/feishu-msg', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ messages }),
+    });
+    const data = await resp.json();
+    return data;
+  } catch (e) {
+    console.error('[飞书采集] 推送失败:', e.message);
+    return null;
+  }
+}
+
 async function collectAndSend() {
   const { serverUrl, groupName } = await getConfig();
-  const msgs = await extractMessages(); // ← 必须 await！
+  const msgs = await extractMessages();
 
   const sentIds = getSentIds();
   const newMsgs = [];
@@ -116,37 +140,63 @@ async function collectAndSend() {
   }
 
   saveSentIds(sentIds);
-
   if (newMsgs.length === 0) { console.log('[飞书采集] 无新消息'); return; }
 
   console.log(`[飞书采集] ${newMsgs.length} 条新消息，推送中...`);
 
-  // 图片消息单独推，文字批量推，避免 payload 过大
+  // 图片单条推，文字批量推
   const textMsgs = newMsgs.filter(m => m.images.length === 0);
-  const imgMsgs = newMsgs.filter(m => m.images.length > 0);
+  const imgMsgs  = newMsgs.filter(m => m.images.length > 0);
 
   if (textMsgs.length > 0) {
-    chrome.runtime.sendMessage({ type: 'PUSH_MESSAGES', serverUrl, messages: textMsgs }, resp => {
-      if (chrome.runtime.lastError) { console.error('[飞书采集]', chrome.runtime.lastError.message); return; }
-      console.log('[飞书采集] 文字推送:', resp?.data);
-    });
+    const r = await pushMessages(serverUrl, textMsgs);
+    console.log('[飞书采集] 文字推送:', r);
   }
-
   for (const imgMsg of imgMsgs) {
-    chrome.runtime.sendMessage({ type: 'PUSH_MESSAGES', serverUrl, messages: [imgMsg] }, resp => {
-      if (chrome.runtime.lastError) { console.error('[飞书采集]', chrome.runtime.lastError.message); return; }
-      console.log('[飞书采集] 图片推送:', resp?.data);
-    });
+    const r = await pushMessages(serverUrl, [imgMsg]);
+    console.log('[飞书采集] 图片推送:', r);
   }
 }
 
-let _timer = null;
+// ── 主循环：带自动重连 ───────────────────────────────────────────────────────
+let _collectTimer = null;
+let _reconnectTimer = null;
+let _interval = INTERVAL_MS;
+
+function startCollecting() {
+  if (_collectTimer) return; // 已在运行
+  console.log('[飞书采集] 启动采集循环，间隔', _interval / 1000, '秒');
+  collectAndSend(); // 立即采集一次
+  _collectTimer = setInterval(collectAndSend, _interval);
+}
+
+function stopCollecting() {
+  if (_collectTimer) { clearInterval(_collectTimer); _collectTimer = null; }
+}
+
+// 心跳：每5秒检查 runtime 是否还活着
+function startHeartbeat() {
+  setInterval(() => {
+    if (!isRuntimeAlive()) {
+      // runtime 断了，停止采集，等待重连
+      if (_collectTimer) {
+        console.warn('[飞书采集] Runtime 断连，暂停采集，等待重连...');
+        stopCollecting();
+      }
+    } else {
+      // runtime 正常，确保采集在跑
+      if (!_collectTimer) {
+        console.log('[飞书采集] Runtime 恢复，重启采集');
+        startCollecting();
+      }
+    }
+  }, RECONNECT_MS);
+}
+
+// 初始化
 setTimeout(async () => {
-  if (!chrome.runtime?.id) return;
-  const { interval } = await getConfig();
-  collectAndSend();
-  _timer = setInterval(() => {
-    if (!chrome.runtime?.id) { clearInterval(_timer); return; }
-    collectAndSend();
-  }, interval || INTERVAL_MS);
+  const config = await getConfig();
+  _interval = config.interval || INTERVAL_MS;
+  startCollecting();
+  startHeartbeat();
 }, 5000);
