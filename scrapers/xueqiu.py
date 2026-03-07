@@ -184,6 +184,12 @@ def _fetch_user_with_selenium(user_id: str, count: int = 20) -> list[dict]:
                                         if m:
                                             from datetime import timedelta
                                             published_at = (now - timedelta(minutes=int(m.group(1)))).isoformat()
+                                        else:
+                                            # X小时前
+                                            m = re.match(r'(\d+)\s*小时前', time_text)
+                                            if m:
+                                                from datetime import timedelta
+                                                published_at = (now - timedelta(hours=int(m.group(1)))).isoformat()
                                         # 刚刚
                                         elif '刚刚' in time_text:
                                             published_at = now.isoformat()
