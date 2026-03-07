@@ -630,7 +630,7 @@
 </div>
 
 <script>
-  const API = '/api/articles';
+  const API = '/api/articles?slim=1';
   let allArticles = [];
   let articleMap  = {};
   let autoTimer;
@@ -762,13 +762,14 @@
     const srcBadge = showSource
       ? `<span class="${sourceBadgeClass(srcType)}">${escHtml(srcType)}</span>`
       : '';
-    // 提取 content_html 里的第一张图作为缩略图
+    // 提取缩略图：slim 模式用 thumb 字段，否则从 content_html 提取
     let thumbHtml = '';
-    if (a.content_html) {
-      const m = a.content_html.match(/<img[^>]+src="([^"]+)"/);
-      if (m) {
-        thumbHtml = `<div class="card-thumb"><img src="${m[1]}" loading="lazy" decoding="async" onerror="this.parentElement.style.display='none'"></div>`;
-      }
+    const thumbSrc = a.thumb || (() => {
+      const m = (a.content_html||'').match(/<img[^>]+src="([^"]+)"/);
+      return m ? m[1] : null;
+    })();
+    if (thumbSrc) {
+      thumbHtml = `<div class="card-thumb"><img src="${thumbSrc}" loading="lazy" decoding="async" onerror="this.parentElement.style.display='none'"></div>`;
     }
     return `
     <div class="article-card card" data-id="${escHtml(a.id)}" onclick="openModal('${a.id.replace(/'/g,"\\'")}')">
@@ -1086,6 +1087,21 @@
     if (a.content_html) {
       setModalContent(contentEl, a.content_html, '');
       return;
+    }
+
+    // slim 模式下没有 content_html，按需从服务器拉完整数据
+    if (!a.content_html) {
+      setModalContent(contentEl, '', a.summary || '加载中…');
+      try {
+        const resp = await fetch(`/api/article/${encodeURIComponent(id)}`);
+        const full = await resp.json();
+        if (full.content_html) {
+          setModalContent(contentEl, full.content_html, '');
+        } else {
+          setModalContent(contentEl, '', full.content || full.summary || '（无内容）');
+        }
+        return;
+      } catch { setModalContent(contentEl, '', a.summary || '（加载失败）'); return; }
     }
 
     if (a.url && stored.length < 300) {
