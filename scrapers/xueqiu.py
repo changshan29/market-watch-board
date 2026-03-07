@@ -158,8 +158,9 @@ def _fetch_user_with_selenium(user_id: str, count: int = 20) -> list[dict]:
                     published_at = datetime.now(tz=CHINA_TZ).isoformat()
                     try:
                         time_elem = post.find_element(By.CSS_SELECTOR, "a.date-and-source")
-                        # 雪球时间格式：'今天 14:30' / '03-07 14:30' / '2026-03-07' 等
+                        # 雪球时间格式：'今天 14:30' / '03-07 14:30' / '2026-03-07' / '14:30' / '刚刚' / 'X分钟前' 等
                         time_text = (time_elem.get_attribute("title") or time_elem.text or "").strip()
+                        print(f"[xueqiu] 原始时间文本: {repr(time_text)}")
                         if time_text:
                             now = datetime.now(tz=CHINA_TZ)
                             # 今天 HH:MM
@@ -177,8 +178,17 @@ def _fetch_user_with_selenium(user_id: str, count: int = 20) -> list[dict]:
                                     m = re.match(r'(\d{1,2}):(\d{2})', time_text)
                                     if m:
                                         published_at = now.replace(hour=int(m.group(1)), minute=int(m.group(2)), second=0, microsecond=0).isoformat()
-                    except:
-                        pass
+                                    else:
+                                        # X分钟前
+                                        m = re.match(r'(\d+)\s*分钟前', time_text)
+                                        if m:
+                                            from datetime import timedelta
+                                            published_at = (now - timedelta(minutes=int(m.group(1)))).isoformat()
+                                        # 刚刚
+                                        elif '刚刚' in time_text:
+                                            published_at = now.isoformat()
+                    except Exception as te:
+                        print(f"[xueqiu] 时间解析失败: {te}")
 
                     articles.append({
                         "id": post_id,
