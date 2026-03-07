@@ -176,9 +176,11 @@ function scheduleAutoRefresh() {
       if (err) {
         console.error('[auto] error:', err.message);
         console.error('[auto] stderr:', stderr);
+        console.error('[auto] stdout:', stdout);
         lastScrapeStatus = 'error: ' + err.message;
       } else {
         console.log('[auto] done');
+        console.log('[auto] stdout:', stdout.slice(0, 3000));
         lastScrapeStatus = 'success';
       }
       scheduleAutoRefresh();
@@ -244,7 +246,7 @@ exec('python3 -u run_cailianshe_2.py --no-kb --fast', {
     if (!fs.existsSync(dataFile)) fs.writeFileSync(dataFile, '[]');
   } else {
     console.log('[startup] initial scrape done');
-    console.log('[startup] stdout:', stdout.slice(0, 500));
+    console.log('[startup] stdout:', stdout.slice(0, 3000));
     lastScrapeStatus = 'success';
   }
   scheduleAutoRefresh();
