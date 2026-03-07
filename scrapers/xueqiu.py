@@ -154,8 +154,31 @@ def _fetch_user_with_selenium(user_id: str, count: int = 20) -> list[dict]:
                         post_id = str(abs(hash(content)))[:12]
                         url = f"https://xueqiu.com/u/{user_id}"
 
-                    # 提取时间
+                    # 提取时间（从 date-and-source 元素文本或 title 属性）
                     published_at = datetime.now(tz=CHINA_TZ).isoformat()
+                    try:
+                        time_elem = post.find_element(By.CSS_SELECTOR, "a.date-and-source")
+                        # 雪球时间格式：'今天 14:30' / '03-07 14:30' / '2026-03-07' 等
+                        time_text = (time_elem.get_attribute("title") or time_elem.text or "").strip()
+                        if time_text:
+                            now = datetime.now(tz=CHINA_TZ)
+                            # 今天 HH:MM
+                            m = re.match(r'今天\s+(\d{1,2}):(\d{2})', time_text)
+                            if m:
+                                published_at = now.replace(hour=int(m.group(1)), minute=int(m.group(2)), second=0, microsecond=0).isoformat()
+                            else:
+                                # MM-DD HH:MM
+                                m = re.match(r'(\d{1,2})-(\d{1,2})\s+(\d{1,2}):(\d{2})', time_text)
+                                if m:
+                                    published_at = now.replace(month=int(m.group(1)), day=int(m.group(2)),
+                                        hour=int(m.group(3)), minute=int(m.group(4)), second=0, microsecond=0).isoformat()
+                                else:
+                                    # 纯 HH:MM
+                                    m = re.match(r'(\d{1,2}):(\d{2})', time_text)
+                                    if m:
+                                        published_at = now.replace(hour=int(m.group(1)), minute=int(m.group(2)), second=0, microsecond=0).isoformat()
+                    except:
+                        pass
 
                     articles.append({
                         "id": post_id,
