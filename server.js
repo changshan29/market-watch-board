@@ -345,7 +345,7 @@ const server = http.createServer((req, res) => {
           source_type: '小作文',
           source_sub: msg.group_name || '飞书群',
           url: '',
-          published_at: msg.timestamp || new Date().toISOString(),
+          published_at: msg.timestamp ? new Date(msg.timestamp).toISOString() : new Date().toISOString(),
           source_label: '小作文',
           feishu: true,
           topic_label: '其他',
@@ -365,7 +365,7 @@ const server = http.createServer((req, res) => {
           feishuArts = feishuArts.slice(0, MAX_XIAOZUOWEN); // 已按时间倒序，保留最新的
         }
         const merged = [...feishuArts, ...nonFeishu];
-        merged.sort((a, b) => (b.published_at || '').localeCompare(a.published_at || ''));
+        merged.sort((a, b) => String(b.published_at || '').localeCompare(String(a.published_at || '')));
         fs.writeFileSync(DATA_FILE, JSON.stringify(merged, null, 2));
       }
       console.log(`[feishu-msg] received ${messages.length}, added ${added}`);
