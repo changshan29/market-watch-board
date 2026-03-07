@@ -637,6 +637,7 @@
   let selectedTopics   = new Set();
   let selectedConcepts = new Set();
   const aiCache = {};   // key: `${type}:${value}:${id}` → true/false
+  let lastEtag = null;  // ETag 缓存，避免数据未变时重新渲染
   let currentArticleIds = new Set();
   let forceFullRender = false;  // 强制完整渲染标志
 
@@ -958,7 +959,20 @@
   // ── 加载（智能更新）─────────────────────────────────────────────────────────
   async function loadAll() {
     try {
-      const resp = await fetch(API);
+      const headers = {};
+      if (lastEtag) headers['If-None-Match'] = lastEtag;
+      const resp = await fetch(API, { headers });
+
+      // 304 表示数据未变，只更新时间戳
+      if (resp.status === 304) {
+        document.getElementById('metaInfo').textContent =
+          `最后更新 ${new Date().toLocaleTimeString('zh-CN')}`;
+        return;
+      }
+
+      const newEtag = resp.headers.get('ETag');
+      if (newEtag) lastEtag = newEtag;
+
       const newArticles = await resp.json();
 
       // 检查是否有变化（通过ID集合对比）

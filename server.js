@@ -16,7 +16,34 @@ const http   = require('http');
 const https  = require('https');
 const fs     = require('fs');
 const path   = require('path');
+const zlib   = require('zlib');
+const crypto = require('crypto');
 const { exec, execFile, spawn } = require('child_process');
+
+// ── gzip 压缩响应工具 ──────────────────────────────────────────────────────
+function sendCompressed(req, res, statusCode, headers, body) {
+  const buf = Buffer.isBuffer(body) ? body : Buffer.from(body);
+  const acceptEncoding = req.headers['accept-encoding'] || '';
+  if (acceptEncoding.includes('gzip')) {
+    zlib.gzip(buf, (err, compressed) => {
+      if (err) {
+        res.writeHead(statusCode, headers);
+        res.end(buf);
+      } else {
+        res.writeHead(statusCode, { ...headers, 'Content-Encoding': 'gzip' });
+        res.end(compressed);
+      }
+    });
+  } else {
+    res.writeHead(statusCode, headers);
+    res.end(buf);
+  }
+}
+
+// ── ETag 工具（MD5 前16位） ────────────────────────────────────────────────
+function makeEtag(buf) {
+  return '"' + crypto.createHash('md5').update(buf).digest('hex').slice(0, 16) + '"';
+}
 
 // 图片存储目录
 const IMAGES_DIR = path.join(__dirname, 'data', 'images');
@@ -29,7 +56,7 @@ function saveBase64Image(b64) {
     if (!matches) return null;
     const ext = matches[1] === 'jpeg' ? 'jpg' : matches[1];
     const data = matches[2];
-    const hash = require('crypto').createHash('md5').update(data).digest('hex').slice(0, 16);
+    const hash = crypto.createHash('md5').update(data).digest('hex').slice(0, 16);
     const filename = `${hash}.${ext}`;
     const localPath = path.join(IMAGES_DIR, filename);
     if (!fs.existsSync(localPath)) {
@@ -230,8 +257,16 @@ const server = http.createServer((req, res) => {
   // GET /
   if (req.method === 'GET' && url.pathname === '/') {
     try {
-      res.writeHead(200, { 'Content-Type': 'text/html; charset=utf-8' });
-      res.end(fs.readFileSync(INDEX_FILE, 'utf8'));
+      const buf = fs.readFileSync(INDEX_FILE);
+      const etag = makeEtag(buf);
+      if (req.headers['if-none-match'] === etag) {
+        res.writeHead(304); res.end(); return;
+      }
+      sendCompressed(req, res, 200, {
+        'Content-Type': 'text/html; charset=utf-8',
+        'ETag': etag,
+        'Cache-Control': 'no-cache',
+      }, buf);
     } catch { res.writeHead(404); res.end('index.html not found'); }
     return;
   }
@@ -273,8 +308,18 @@ const server = http.createServer((req, res) => {
         thumb: (() => { const m = (a.content_html||'').match(/<img[^>]+src="([^"]+)"/); return m?m[1]:null; })(),
       }));
     }
-    res.writeHead(200, { 'Content-Type': 'application/json; charset=utf-8', 'Access-Control-Allow-Origin': '*' });
-    res.end(JSON.stringify(articles));
+    const body = JSON.stringify(articles);
+    const buf  = Buffer.from(body);
+    const etag = makeEtag(buf);
+    if (req.headers['if-none-match'] === etag) {
+      res.writeHead(304, { 'Access-Control-Allow-Origin': '*' }); res.end(); return;
+    }
+    sendCompressed(req, res, 200, {
+      'Content-Type': 'application/json; charset=utf-8',
+      'Access-Control-Allow-Origin': '*',
+      'ETag': etag,
+      'Cache-Control': 'no-cache',
+    }, buf);
     return;
   }
 
