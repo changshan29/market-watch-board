@@ -29,6 +29,8 @@ from scrapers.cls_telegraph import fetch as fetch_cls, poll as poll_cls
 from scrapers.webpage import fetch as fetch_webpage
 from scrapers.xueqiu import fetch as fetch_xueqiu
 from scrapers.other import fetch as fetch_other
+from scrapers.jin10 import scrape_jin10
+from scrapers.kr36 import scrape_36kr
 from classifier import classify_batch
 from kb_compare import compare_batch
 
@@ -96,6 +98,8 @@ def run_scrapers(cls_only: bool = False, source_filter: str = None) -> list[dict
         tasks["网页"]   = fetch_webpage
         tasks["雪球"]   = fetch_xueqiu
         tasks["其他"]   = fetch_other
+        tasks["金十快讯"] = lambda: scrape_jin10(50)
+        tasks["36氪快讯"] = lambda: scrape_36kr(50)
 
     all_articles = []
     for name, fn in tasks.items():
@@ -166,7 +170,7 @@ def save_articles(articles: list[dict], merge: bool = False):
     merged.sort(key=lambda a: a.get("published_at", ""), reverse=True)
 
     # 按来源类型限制条数（小作文由 server.js 控制，这里只限制网页/雪球）
-    MAX_PER_SOURCE = {"网页": 200, "雪球": 100}
+    MAX_PER_SOURCE = {"网页": 300, "雪球": 100}
     result = []
     source_counts: dict = {}
     for a in merged:
