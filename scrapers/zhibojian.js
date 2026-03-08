@@ -17,8 +17,8 @@ const BASE_URL     = 'http://43.142.67.10:1000';
 const DATA_FILE    = path.join(__dirname, '..', 'data', 'articles.json');
 const STATE_FILE   = path.join(__dirname, '..', 'data', 'zhibojian_state.json');
 const ROOMS_CACHE  = path.join(__dirname, '..', 'data', 'zhibojian_rooms.json'); // 群列表缓存
-const MAX_ITEMS    = 150;
-const PAGE_SIZE    = 30;
+const MAX_ITEMS    = 300;   // 小作文区域最大条数
+const PAGE_SIZE    = 30;    // 每次拉取消息数
 
 // ── HTTP POST 工具 ────────────────────────────────────────────────────────
 function postJSON(urlStr, body, token) {
@@ -139,10 +139,11 @@ function msgToArticle(msg, roomTitle) {
   const title = fullText === '[图片]' ? '图片消息'
     : (fullText.slice(0, 50) + (fullText.length > 50 ? '…' : ''));
 
-  // createtime 是毫秒时间戳（number）
-  const publishedAt = msg.createtime
-    ? new Date(Number(msg.createtime)).toISOString()
-    : new Date().toISOString();
+  // createtime 是毫秒时间戳（number），但部分群可能返回 0 或异常值
+  let publishedAt = new Date().toISOString();
+  if (msg.createtime && Number(msg.createtime) > 1000000000000) {
+    try { publishedAt = new Date(Number(msg.createtime)).toISOString(); } catch {}
+  }
 
   return {
     id:             'zhibojian_' + msg.id,
