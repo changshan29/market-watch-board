@@ -107,7 +107,7 @@ async function fetchMessages(roomId, token, lastId) {
 
 // ── 把直播间消息转换为看板 article 格式 ───────────────────────────────────
 // msg 字段结构：JSON 字符串 [{type:'text',msg:'...'},{type:'pic',url:'...'}]
-function msgToArticle(msg, roomTitle) {
+function msgToArticle(msg, roomTitle, subType) {
   let textParts  = [];
   let contentHtml = '';
 
@@ -152,6 +152,7 @@ function msgToArticle(msg, roomTitle) {
     content_html:   contentHtml,
     source_type:    '小作文',
     source_sub:     roomTitle || '直播间',
+    source_sub_type: subType || 'xiaozuowen',   // 'xiaozuowen' | 'jigou'
     url:            '',
     published_at:   publishedAt,
     source_label:   '小作文',
@@ -201,18 +202,21 @@ async function scrape(token, settings) {
   let totalAdded = 0;
   let tokenExpired = false;
 
-  // 确定要抓取的房间列表
-  let targetRooms = [];
-  if (settings && Array.isArray(settings.enabled_rooms) && settings.enabled_rooms.length > 0) {
-    targetRooms = settings.enabled_rooms;
+  // 构造带 subType 的抓取任务列表
+  // 支持新格式（xiaozuowen_rooms + jigou_rooms）和旧格式（enabled_rooms）
+  let tasks = []; // [{ id, title, subType }]
+  if (settings && (settings.xiaozuowen_rooms || settings.jigou_rooms)) {
+    for (const r of (settings.xiaozuowen_rooms || [])) tasks.push({ ...r, subType: 'xiaozuowen' });
+    for (const r of (settings.jigou_rooms || []))       tasks.push({ ...r, subType: 'jigou' });
+  } else if (settings && Array.isArray(settings.enabled_rooms) && settings.enabled_rooms.length > 0) {
+    tasks = settings.enabled_rooms.map(r => ({ ...r, subType: 'xiaozuowen' }));
   } else {
     // fallback：自动找「每日调研」
     try {
       const allRooms = await fetchRoomList(token);
       const mrdyan = allRooms.find(r => r.title && r.title.includes('每日调研'));
-      targetRooms = mrdyan
-        ? [{ id: mrdyan.id, title: mrdyan.title }]
-        : allRooms.slice(0, 1).map(r => ({ id: r.id, title: r.title }));
+      const room = mrdyan || allRooms[0];
+      if (room) tasks = [{ id: room.id, title: room.title, subType: 'xiaozuowen' }];
     } catch(e) {
       console.error('[zhibojian] fetchRoomList failed:', e.message);
       return { added: 0, error: e.message };
@@ -220,16 +224,15 @@ async function scrape(token, settings) {
   }
 
   // 并发拉各群消息
-  await Promise.all(targetRooms.map(async room => {
+  await Promise.all(tasks.map(async room => {
     try {
       const lastId = state[String(room.id)] || null;
       const msgs   = await fetchMessages(room.id, token, lastId);
       if (msgs.length === 0) return;
 
-
       const newArticles = [];
       for (const msg of msgs) {
-        const art = msgToArticle(msg, room.title);
+        const art = msgToArticle(msg, room.title, room.subType);
         if (!existingIds.has(art.id)) {
           newArticles.push(art);
           existingIds.add(art.id);
@@ -242,7 +245,7 @@ async function scrape(token, settings) {
         // 记录最新 id（取最大值）
         const maxId = msgs.reduce((max, m) => Number(m.id) > Number(max) ? m.id : max, 0);
         state[String(room.id)] = maxId;
-        console.log(`[zhibojian] 「${room.title}」新增 ${newArticles.length} 条`);
+        console.log(`[zhibojian] 「${room.title}」(${room.subType}) 新增 ${newArticles.length} 条`);
       }
     } catch(e) {
       if (e.message === 'TOKEN_EXPIRED') {
