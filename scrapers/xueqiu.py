@@ -376,8 +376,13 @@ def _fetch_user_with_selenium(user_id: str, count: int = 20) -> list[dict]:
                             # fallback：解析相对时间文本
                             raw_title = time_elem.get_attribute("title") or ""
                             raw_text  = time_elem.text or ""
-                            time_text = (raw_title or raw_text).strip()
-                            print(f"[xueqiu] 时间文本 title={repr(raw_title)} text={repr(raw_text)}")
+                            raw_inner = time_elem.get_attribute("innerText") or ""
+                            time_text = (raw_title or raw_text or raw_inner).strip()
+                            if not time_text:
+                                # 打印 outerHTML 以便调试
+                                outer = time_elem.get_attribute("outerHTML") or ""
+                                print(f"[xueqiu] 时间元素为空，outerHTML={repr(outer[:200])}")
+                            print(f"[xueqiu] 时间文本 title={repr(raw_title)} text={repr(raw_text)} inner={repr(raw_inner)}")
                             published_at = _parse_time_text(time_text)
                     except Exception as te:
                         print(f"[xueqiu] 时间解析失败: {te}")
