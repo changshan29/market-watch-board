@@ -141,12 +141,25 @@
       min-height: 0;
     }
 
-    #panel-keyword {
+    /* 右下：机构点评 */
+    #panel-jigou {
       flex: 1;
       display: flex;
       flex-direction: column;
       overflow: hidden;
       min-height: 0;
+      border-top: 1px solid #2a2d3e;
+    }
+    #panel-jigou .jigou-scroll {
+      flex: 1;
+      overflow-y: auto;
+      min-height: 0;
+    }
+    .stripe-jigou { background: #e8a838; }
+
+    /* 旧 keyword 面板隐藏 */
+    #panel-keyword {
+      display: none;
     }
 
     .concept-scroll, .kw-scroll {
@@ -590,8 +603,8 @@
         </div>
       </div>
     </div>
-    <!-- 关键词搜索（保留功能，折叠到概念区下方） -->
-    <div id="panel-keyword">
+    <!-- 关键词搜索（隐藏，保留功能） -->
+    <div id="panel-keyword" style="display:none">
       <div class="panel-header">
         <div class="panel-stripe stripe-keyword"></div>
         <span class="panel-title" id="panel-keyword-title">-</span>
@@ -599,6 +612,19 @@
       <div class="kw-scroll">
         <div class="panel-body">
           <div class="article-list" id="list-keyword"></div>
+        </div>
+      </div>
+    </div>
+    <!-- 右下：机构点评 -->
+    <div id="panel-jigou">
+      <div class="panel-header">
+        <div class="panel-stripe stripe-jigou"></div>
+        <span class="panel-title">机构点评</span>
+        <span class="panel-count" id="cnt-jigou">-</span>
+      </div>
+      <div class="jigou-scroll">
+        <div class="panel-body">
+          <div class="article-list" id="list-jigou"></div>
         </div>
       </div>
     </div>
@@ -831,18 +857,31 @@
     renderPanel('list-web',    'cnt-web',    filter('网页'));
     renderPanel('list-xueqiu', 'cnt-xueqiu', filter('雪球'));
 
-    // 小作文：如果没有飞书消息，fallback 显示最近30条（所有来源）
-    const xiaozuowen = filter('小作文');
-    if (xiaozuowen.length === 0) {
+    // 小作文区域：subType === 'xiaozuowen'（信息平权/嗅嗅挖金/唐史/一图调研）
+    const xiaozuowen = allArticles.filter(a =>
+      (a.source_type === '小作文' || a.source_label === '小作文') &&
+      (a.source_sub_type === 'xiaozuowen' || !a.source_sub_type)
+    );
+    if (selectedTopics.size > 0) {
+      const filtered = xiaozuowen.filter(a => selectedTopics.has(a.topic_label || '其他'));
+      renderPanel('list-wechat', 'cnt-wechat', filtered);
+    } else if (xiaozuowen.length === 0) {
       const fallback = [...allArticles]
         .sort((a, b) => String(b.published_at || '').localeCompare(String(a.published_at || '')))
         .slice(0, 30);
       renderPanel('list-wechat', 'cnt-wechat', fallback, true);
     } else {
-      // 飞书消息 ID 是雪花 ID（越大越新），按 ID 降序 = 最新消息在最上面
       const sorted = [...xiaozuowen].sort((a, b) => String(b.id || '').localeCompare(String(a.id || '')));
       renderPanel('list-wechat', 'cnt-wechat', sorted);
     }
+
+    // 机构点评区域：subType === 'jigou'（研讯社/水木调研/每日调研）
+    const jigou = allArticles.filter(a =>
+      (a.source_type === '小作文' || a.source_label === '小作文') &&
+      a.source_sub_type === 'jigou'
+    );
+    const jigouSorted = [...jigou].sort((a, b) => String(b.id || '').localeCompare(String(a.id || '')));
+    renderPanel('list-jigou', 'cnt-jigou', jigouSorted);
   }
 
   // ── AI 筛选 ───────────────────────────────────────────────────────────────
