@@ -122,11 +122,34 @@ async function extractMessages() {
     }
 
     // 消息元素
-    const senderEl = el.querySelector('.message-info-name');
+    const senderEl = el.querySelector('.message-info-name, [class*="senderName"], [class*="sender-name"]');
     if (senderEl?.innerText.trim()) lastSender = senderEl.innerText.trim();
 
-    const timeEl = el.querySelector('.message-timestamp');
-    if (timeEl?.innerText.trim()) lastTime = timeEl.innerText.trim();
+    // 尝试多个选择器提取时间文本
+    const TIME_SELS = [
+      '.message-timestamp',
+      '[class*="timestamp"]',
+      '[class*="Timestamp"]',
+      '[class*="msg-time"]',
+      '[class*="msgTime"]',
+      '[class*="time-text"]',
+      'time',
+    ];
+    let foundTimeText = '';
+    for (const sel of TIME_SELS) {
+      const t = el.querySelector(sel);
+      if (t?.innerText?.trim()) { foundTimeText = t.innerText.trim(); break; }
+    }
+    // 如果选择器都没找到，在整个消息元素内用 TreeWalker 搜 HH:MM 格式文本节点
+    if (!foundTimeText) {
+      const walker = document.createTreeWalker(el, NodeFilter.SHOW_TEXT, null, false);
+      let node;
+      while ((node = walker.nextNode())) {
+        const t = node.textContent.trim();
+        if (/^\d{1,2}:\d{2}$/.test(t)) { foundTimeText = t; break; }
+      }
+    }
+    if (foundTimeText) lastTime = foundTimeText;
 
     let timestamp = new Date().toISOString();
     if (lastTime) {
