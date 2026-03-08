@@ -716,11 +716,34 @@ const server = http.createServer((req, res) => {
     if (!requireAuth(req, res)) return;
     res.writeHead(200, { 'Content-Type': 'application/json; charset=utf-8', 'Access-Control-Allow-Origin': '*' });
     res.end(JSON.stringify({ ok: true, status: 'scraping in background' }));
-    // 后台异步执行，不阻塞响应
     runZhibojianNow().then(result => {
       if (result.added > 0) _articlesCacheTime = 0;
       console.log('[scrape-now] done:', result);
     }).catch(e => console.error('[scrape-now] error:', e.message));
+    return;
+  }
+
+  // POST /api/zhibojian/reset — 清空直播间数据并全量重抓（修复 source_sub_type 缺失）
+  if (req.method === 'POST' && url.pathname === '/api/zhibojian/reset') {
+    if (!requireAuth(req, res)) return;
+    // 1. 清空 state（强制全量拉取）
+    const stateFile = path.join(__dirname, 'data', 'zhibojian_state.json');
+    try { fs.writeFileSync(stateFile, '{}'); } catch {}
+    // 2. 从 articles.json 删除所有直播间数据
+    try {
+      const arts = readArticles();
+      const cleaned = arts.filter(a => a.source_label !== '小作文');
+      fs.writeFileSync(DATA_FILE, JSON.stringify(cleaned, null, 2));
+      writeArticlesCache(cleaned);
+    } catch {}
+    console.log('[zhibojian] reset: cleared state + articles, re-scraping...');
+    res.writeHead(200, { 'Content-Type': 'application/json; charset=utf-8', 'Access-Control-Allow-Origin': '*' });
+    res.end(JSON.stringify({ ok: true, status: 'reset done, scraping in background' }));
+    // 3. 全量重抓
+    runZhibojianNow().then(result => {
+      _articlesCacheTime = 0;
+      console.log('[zhibojian] reset scrape done:', result);
+    }).catch(e => console.error('[zhibojian] reset scrape error:', e.message));
     return;
   }
 
