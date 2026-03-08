@@ -223,7 +223,7 @@ async function scrape(token, settings) {
     }
   }
 
-  // 并发拉各群消息
+  let hadPatches = false;
   await Promise.all(tasks.map(async room => {
     try {
       const lastId = state[String(room.id)] || null;
@@ -231,12 +231,20 @@ async function scrape(token, settings) {
       if (msgs.length === 0) return;
 
       const newArticles = [];
+      let patchedCount = 0;
       for (const msg of msgs) {
         const art = msgToArticle(msg, room.title, room.subType);
         if (!existingIds.has(art.id)) {
           newArticles.push(art);
           existingIds.add(art.id);
           totalAdded++;
+        } else {
+          // 修补旧文章缺失的 source_sub_type 字段
+          const existing = articles.find(a => a.id === art.id);
+          if (existing && !existing.source_sub_type) {
+            existing.source_sub_type = room.subType;
+            patchedCount++;
+          }
         }
       }
 
@@ -245,7 +253,8 @@ async function scrape(token, settings) {
         // 记录最新 id（取最大值）
         const maxId = msgs.reduce((max, m) => Number(m.id) > Number(max) ? m.id : max, 0);
         state[String(room.id)] = maxId;
-        console.log(`[zhibojian] 「${room.title}」(${room.subType}) 新增 ${newArticles.length} 条`);
+        if (newArticles.length > 0) console.log(`[zhibojian] 「${room.title}」(${room.subType}) 新增 ${newArticles.length} 条`);
+        if (patchedCount > 0) { console.log(`[zhibojian] 「${room.title}」修补 source_sub_type ${patchedCount} 条`); hadPatches = true; }
       }
     } catch(e) {
       if (e.message === 'TOKEN_EXPIRED') {
@@ -257,7 +266,7 @@ async function scrape(token, settings) {
     }
   }));
 
-  if (totalAdded > 0) {
+  if (totalAdded > 0 || hadPatches) {
     const nonZhibo = articles.filter(a => a.source_label !== '小作文');
     let zhiboArts  = articles.filter(a => a.source_label === '小作文');
     zhiboArts.sort((a, b) => String(b.published_at || '').localeCompare(String(a.published_at || '')));
