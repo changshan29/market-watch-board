@@ -109,14 +109,17 @@ let zhibojianTimer = null;
 
 function scheduleZhibojian() {
   if (zhibojianTimer) clearTimeout(zhibojianTimer);
-  const settings = readJson(SETTINGS_FILE, DEFAULT_SETTINGS);
+  const settings = readSettings();
   const intervalSec = (settings.intervals && settings.intervals.zhibojian) || 120;
   const token = getZbToken();
   if (!token) { console.log('[zhibojian] no token, skipping'); return; }
   zhibojianTimer = setTimeout(async () => {
     try {
       const result = await zhibojian.scrape(getZbToken(), getZbCfg());
-      if (result.added > 0) console.log(`[zhibojian] added ${result.added} new messages`);
+      if (result.added > 0) {
+        console.log(`[zhibojian] added ${result.added} new messages`);
+        _articlesCacheTime = 0; // 强制下次读取时刷新缓存
+      }
       if (result.tokenExpired) console.warn('[zhibojian] token expired! needs refresh via /api/zhibojian/refresh-token');
     } catch(e) {
       console.error('[zhibojian] scrape error:', e.message);
@@ -144,8 +147,42 @@ function readBody(req) {
   });
 }
 
+// ── articles.json 内存缓存（减少磁盘 IO，提升响应速度）───────────────────
+let _articlesCache = null;
+let _articlesCacheTime = 0;
+const ARTICLES_CACHE_TTL = 5000; // 5秒内直接用缓存
+
 function readArticles() {
-  return readJson(DATA_FILE, []);
+  const now = Date.now();
+  if (_articlesCache && (now - _articlesCacheTime) < ARTICLES_CACHE_TTL) {
+    return _articlesCache;
+  }
+  _articlesCache = readJson(DATA_FILE, []);
+  _articlesCacheTime = now;
+  return _articlesCache;
+}
+
+function writeArticlesCache(articles) {
+  _articlesCache = articles;
+  _articlesCacheTime = Date.now();
+}
+
+// ── settings.json 内存缓存 ────────────────────────────────────────────────
+let _settingsCache = null;
+let _settingsCacheTime = 0;
+
+function readSettings() {
+  const now = Date.now();
+  if (_settingsCache && (now - _settingsCacheTime) < 10000) return _settingsCache;
+  _settingsCache = readJson(SETTINGS_FILE, DEFAULT_SETTINGS);
+  _settingsCacheTime = now;
+  return _settingsCache;
+}
+
+function writeSettings(data) {
+  fs.writeFileSync(SETTINGS_FILE, JSON.stringify(data, null, 2));
+  _settingsCache = data;
+  _settingsCacheTime = Date.now();
 }
 
 // ── 权限检查：密码保护 ──────────────────────────────────────────────────────
@@ -188,7 +225,7 @@ function scheduleAutoRefresh() {
   if (refreshTimer) clearTimeout(refreshTimer);
   if (isPaused) return;
 
-  const settings = readJson(SETTINGS_FILE, DEFAULT_SETTINGS);
+  const settings = readSettings();
   const iv = settings.intervals || {};
   const minSec = Math.min(iv.webpages ?? 1800, iv.xueqiu ?? 600);
 
@@ -210,6 +247,7 @@ function scheduleAutoRefresh() {
         console.log('[auto] done');
         console.log('[auto] stdout:', stdout.slice(0, 3000));
         lastScrapeStatus = 'success';
+        _articlesCacheTime = 0; // 强制刷新文章缓存
       }
       scheduleAutoRefresh();
     });
@@ -290,7 +328,7 @@ function getZbToken() {
 }
 
 function getZbCfg() {
-  const settings = readJson(SETTINGS_FILE, DEFAULT_SETTINGS);
+  const settings = readSettings();
   const cfg = settings.zhibojian || {};
   return Object.assign({}, cfg, zbTokenOverride ? { token: zbTokenOverride } : {});
 }
@@ -402,6 +440,7 @@ const server = http.createServer((req, res) => {
   if (req.method === 'POST' && url.pathname === '/api/clear') {
     if (!requireAuth(req, res)) return;
     fs.writeFileSync(DATA_FILE, '[]');
+    writeArticlesCache([]);
     res.writeHead(200, { 'Content-Type': 'application/json; charset=utf-8', 'Access-Control-Allow-Origin': '*' });
     res.end(JSON.stringify({ ok: true, msg: '数据已清空' }));
     console.log('[clear] articles.json cleared');
@@ -510,6 +549,7 @@ const server = http.createServer((req, res) => {
         const merged = [...feishuArts, ...nonFeishu];
         merged.sort((a, b) => String(b.published_at || '').localeCompare(String(a.published_at || '')));
         fs.writeFileSync(DATA_FILE, JSON.stringify(merged, null, 2));
+        writeArticlesCache(merged);
       }
       console.log(`[feishu-msg] received ${messages.length}, added ${added}`);
       res.writeHead(200, { 'Content-Type': 'application/json; charset=utf-8', 'Access-Control-Allow-Origin': '*' });
@@ -523,18 +563,21 @@ const server = http.createServer((req, res) => {
 
   // GET /api/sources
   if (req.method === 'GET' && url.pathname === '/api/sources') {
-    const src = readJson(SOURCES_FILE, { webpages: [], xueqiu: [], wechat: [], other: [] });
-    if (!src.xueqiu) src.xueqiu = [];   // 兼容旧格式
+    const s = readSettings();
+    const src = s.sources || { webpages: [], xueqiu: [], wechat: [], other: [] };
+    if (!src.xueqiu) src.xueqiu = [];
     res.writeHead(200, { 'Content-Type': 'application/json; charset=utf-8', 'Access-Control-Allow-Origin': '*' });
     res.end(JSON.stringify(src));
     return;
   }
 
-  // POST /api/sources - 仅本地访问
+  // POST /api/sources - 保存到 settings.json（持久化）
   if (req.method === 'POST' && url.pathname === '/api/sources') {
     if (!requireAuth(req, res)) return;
     readBody(req).then(data => {
-      fs.writeFileSync(SOURCES_FILE, JSON.stringify(data, null, 2));
+      const s = readSettings();
+      s.sources = data;
+      writeSettings(s);
       res.writeHead(200, { 'Content-Type': 'application/json', 'Access-Control-Allow-Origin': '*' });
       res.end(JSON.stringify({ ok: true }));
     }).catch(e => {
@@ -547,7 +590,7 @@ const server = http.createServer((req, res) => {
   if (req.method === 'GET' && url.pathname === '/api/settings') {
     if (!requireAuth(req, res)) return;
     res.writeHead(200, { 'Content-Type': 'application/json; charset=utf-8', 'Access-Control-Allow-Origin': '*' });
-    res.end(JSON.stringify(readJson(SETTINGS_FILE, DEFAULT_SETTINGS)));
+    res.end(JSON.stringify(readSettings()));
     return;
   }
 
@@ -599,7 +642,7 @@ const server = http.createServer((req, res) => {
   if (req.method === 'POST' && url.pathname === '/api/settings') {
     if (!requireAuth(req, res)) return;
     readBody(req).then(data => {
-      fs.writeFileSync(SETTINGS_FILE, JSON.stringify(data, null, 2));
+      writeSettings(data);
       scheduleAutoRefresh();   // 用新间隔重置计时器
       scheduleZhibojian();     // 直播间定时器也用新间隔重置
       res.writeHead(200, { 'Content-Type': 'application/json', 'Access-Control-Allow-Origin': '*' });
