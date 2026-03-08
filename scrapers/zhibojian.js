@@ -173,12 +173,26 @@ function writeArticles(articles) {
   fs.writeFileSync(DATA_FILE, JSON.stringify(articles, null, 2));
 }
 
+// ── Token 心跳保活（防止 session 过期）────────────────────────────────────
+async function keepAlive(token) {
+  try {
+    const data = await postJSON(`${BASE_URL}/3/api/user/issign`, {}, token);
+    // 只要不是 502 就算活着
+    return data && data.code !== 502;
+  } catch {
+    return false;
+  }
+}
+
 // ── 主抓取函数 ────────────────────────────────────────────────────────────
 async function scrape(token, settings) {
   if (!token) {
     console.error('[zhibojian] no token configured');
     return { added: 0, error: 'no token' };
   }
+
+  // 心跳保活（让服务端 session 保持活跃）
+  await keepAlive(token);
 
   const state   = readState();
   let articles  = readArticles();
