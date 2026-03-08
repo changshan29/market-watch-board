@@ -35,6 +35,7 @@ _API_HEADERS = {
 try:
     from selenium import webdriver
     from selenium.webdriver.chrome.options import Options
+    from selenium.webdriver.chrome.service import Service
     from selenium.webdriver.common.by import By
     from selenium.webdriver.support.ui import WebDriverWait
     from selenium.webdriver.support import expected_conditions as EC
@@ -271,7 +272,10 @@ def _create_driver():
     options.add_experimental_option('useAutomationExtension', False)
 
     try:
-        driver = webdriver.Chrome(options=options)
+        # 使用 apt 安装的 chromium + chromedriver（路径固定，无需外网下载）
+        service = Service('/usr/bin/chromedriver')
+        options.binary_location = '/usr/bin/chromium'
+        driver = webdriver.Chrome(service=service, options=options)
         driver.execute_cdp_cmd('Page.addScriptToEvaluateOnNewDocument', {
             'source': 'Object.defineProperty(navigator, "webdriver", {get: () => undefined})'
         })
