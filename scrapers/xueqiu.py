@@ -358,32 +358,36 @@ def _fetch_user_with_selenium(user_id: str, count: int = 20) -> list[dict]:
                         post_id = str(abs(hash(content)))[:12]
                         url = f"https://xueqiu.com/u/{user_id}"
 
-                    # 提取时间（从 date-and-source 元素文本或 title 属性）
-                    # 提取时间：优先从帖子ID推算（雪球帖子ID是13位毫秒时间戳）
+                    # 提取时间
                     published_at = datetime.now(tz=CHINA_TZ).isoformat()
                     try:
                         time_elem = post.find_element(By.CSS_SELECTOR, "a.date-and-source")
-                        href = time_elem.get_attribute("href") or ""
-                        print(f"[xueqiu] href={repr(href)}")
-                        id_match = re.search(r'/(\d{10,13})$', href)
-                        if id_match:
-                            ts = int(id_match.group(1))
-                            # 13位是毫秒，10位是秒
-                            if ts > 1e12:
-                                ts = ts / 1000
-                            published_at = datetime.fromtimestamp(ts, tz=CHINA_TZ).isoformat()
-                        else:
-                            # fallback：解析相对时间文本
-                            raw_title = time_elem.get_attribute("title") or ""
-                            raw_text  = time_elem.text or ""
-                            raw_inner = time_elem.get_attribute("innerText") or ""
-                            time_text = (raw_title or raw_text or raw_inner).strip()
-                            if not time_text:
-                                # 打印 outerHTML 以便调试
+                        raw_title = time_elem.get_attribute("title") or ""
+                        raw_text  = time_elem.text or ""
+                        raw_inner = time_elem.get_attribute("innerText") or ""
+                        time_text = (raw_title or raw_text or raw_inner).strip()
+
+                        if not time_text:
+                            # 时间元素为空，用 JS 在帖子内搜索所有含 HH:MM 的文本节点
+                            found = driver.execute_script("""
+                                var el = arguments[0];
+                                var texts = [];
+                                var walker = document.createTreeWalker(el, NodeFilter.SHOW_TEXT, null, false);
+                                var node;
+                                while (node = walker.nextNode()) {
+                                    var t = node.textContent.trim();
+                                    if (t.match(/\\d{1,2}:\\d{2}/)) texts.push(t);
+                                }
+                                return texts;
+                            """, post)
+                            if found:
+                                time_text = found[0].strip()
+                                print(f"[xueqiu] JS找到时间文本: {repr(time_text)}")
+                            else:
                                 outer = time_elem.get_attribute("outerHTML") or ""
-                                print(f"[xueqiu] 时间元素为空，outerHTML={repr(outer[:200])}")
-                            print(f"[xueqiu] 时间文本 title={repr(raw_title)} text={repr(raw_text)} inner={repr(raw_inner)}")
-                            published_at = _parse_time_text(time_text)
+                                print(f"[xueqiu] 时间元素为空，outerHTML={repr(outer[:300])}")
+
+                        published_at = _parse_time_text(time_text)
                     except Exception as te:
                         print(f"[xueqiu] 时间解析失败: {te}")
 
