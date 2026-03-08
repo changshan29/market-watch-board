@@ -2,6 +2,13 @@
   "intervals": {
     "webpages": 300,
     "xueqiu": 600,
-    "wechat": 660
+    "wechat": 660,
+    "zhibojian": 120
+  },
+  "zhibojian": {
+    "token": "5fcdf5dd329a20b2f0bb759d39bd2cf3",
+    "enabled_rooms": [
+      { "id": 37833, "title": "每日调研" }
+    ]
   }
 }

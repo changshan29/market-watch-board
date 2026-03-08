@@ -103,6 +103,36 @@ const SETTINGS_FILE = path.join(__dirname, 'settings.json');
 
 const DEFAULT_SETTINGS = { intervals: { webpages: 1800, xueqiu: 600 }, plugin_interval: 60 };
 
+// ── 直播间抓取模块 ─────────────────────────────────────────────────────────
+const zhibojian = require('./scrapers/zhibojian');
+let zhibojianTimer = null;
+
+function scheduleZhibojian() {
+  if (zhibojianTimer) clearTimeout(zhibojianTimer);
+  const settings = readJson(SETTINGS_FILE, DEFAULT_SETTINGS);
+  const intervalSec = (settings.intervals && settings.intervals.zhibojian) || 120;
+  const zbCfg = settings.zhibojian || {};
+  const token = zbCfg.token || '';
+  if (!token) { console.log('[zhibojian] no token, skipping'); return; }
+  zhibojianTimer = setTimeout(async () => {
+    try {
+      const result = await zhibojian.scrape(token, zbCfg);
+      if (result.added > 0) console.log(`[zhibojian] added ${result.added} new messages`);
+    } catch(e) {
+      console.error('[zhibojian] scrape error:', e.message);
+    }
+    scheduleZhibojian();
+  }, intervalSec * 1000);
+}
+
+async function runZhibojianNow() {
+  const settings = readJson(SETTINGS_FILE, DEFAULT_SETTINGS);
+  const zbCfg = settings.zhibojian || {};
+  const token = zbCfg.token || '';
+  if (!token) return { added: 0, error: 'no token' };
+  return zhibojian.scrape(token, zbCfg);
+}
+
 function readJson(file, fallback) {
   try { return JSON.parse(fs.readFileSync(file, 'utf8')); } catch { return fallback; }
 }
@@ -251,6 +281,18 @@ exec('python3 -u run_cailianshe_2.py --no-kb --fast', {
   }
   scheduleAutoRefresh();
 });
+
+// ── 直播间定时抓取：启动时立即执行一次，然后定时循环 ──────────────────────
+(async () => {
+  console.log('[zhibojian] startup scrape...');
+  try {
+    const result = await runZhibojianNow();
+    console.log(`[zhibojian] startup done, added=${result.added}`);
+  } catch(e) {
+    console.error('[zhibojian] startup error:', e.message);
+  }
+  scheduleZhibojian();
+})();
 
 // ── HTTP 服务 ─────────────────────────────────────────────────────────────────
 const server = http.createServer((req, res) => {
@@ -548,10 +590,44 @@ const server = http.createServer((req, res) => {
     readBody(req).then(data => {
       fs.writeFileSync(SETTINGS_FILE, JSON.stringify(data, null, 2));
       scheduleAutoRefresh();   // 用新间隔重置计时器
+      scheduleZhibojian();     // 直播间定时器也用新间隔重置
       res.writeHead(200, { 'Content-Type': 'application/json', 'Access-Control-Allow-Origin': '*' });
       res.end(JSON.stringify({ ok: true }));
     }).catch(e => {
       res.writeHead(400); res.end(JSON.stringify({ error: e.message }));
+    });
+    return;
+  }
+
+  // GET /api/zhibojian/rooms — 获取直播间所有群列表（后台管理用）
+  if (req.method === 'GET' && url.pathname === '/api/zhibojian/rooms') {
+    if (!requireAuth(req, res)) return;
+    const settings = readJson(SETTINGS_FILE, DEFAULT_SETTINGS);
+    const token = (settings.zhibojian || {}).token || '';
+    if (!token) {
+      res.writeHead(400, { 'Content-Type': 'application/json', 'Access-Control-Allow-Origin': '*' });
+      res.end(JSON.stringify({ error: 'no token configured' }));
+      return;
+    }
+    zhibojian.getRoomList(token).then(list => {
+      res.writeHead(200, { 'Content-Type': 'application/json; charset=utf-8', 'Access-Control-Allow-Origin': '*' });
+      res.end(JSON.stringify({ ok: true, rooms: list.map(r => ({ id: r.id, title: r.title })) }));
+    }).catch(e => {
+      res.writeHead(500, { 'Content-Type': 'application/json', 'Access-Control-Allow-Origin': '*' });
+      res.end(JSON.stringify({ error: e.message }));
+    });
+    return;
+  }
+
+  // POST /api/zhibojian/scrape-now — 立即触发一次抓取
+  if (req.method === 'POST' && url.pathname === '/api/zhibojian/scrape-now') {
+    if (!requireAuth(req, res)) return;
+    runZhibojianNow().then(result => {
+      res.writeHead(200, { 'Content-Type': 'application/json; charset=utf-8', 'Access-Control-Allow-Origin': '*' });
+      res.end(JSON.stringify({ ok: true, ...result }));
+    }).catch(e => {
+      res.writeHead(500, { 'Content-Type': 'application/json', 'Access-Control-Allow-Origin': '*' });
+      res.end(JSON.stringify({ error: e.message }));
     });
     return;
   }
