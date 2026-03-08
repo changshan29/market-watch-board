@@ -13,11 +13,12 @@ const fs    = require('fs');
 const path  = require('path');
 
 // ── 配置 ──────────────────────────────────────────────────────────────────
-const BASE_URL   = 'http://43.142.67.10:1000';
-const DATA_FILE  = path.join(__dirname, '..', 'data', 'articles.json');
-const STATE_FILE = path.join(__dirname, '..', 'data', 'zhibojian_state.json');
-const MAX_ITEMS  = 150;   // 小作文区域最大条数
-const PAGE_SIZE  = 30;    // 每次拉取消息数（服务端默认返回 30）
+const BASE_URL     = 'http://43.142.67.10:1000';
+const DATA_FILE    = path.join(__dirname, '..', 'data', 'articles.json');
+const STATE_FILE   = path.join(__dirname, '..', 'data', 'zhibojian_state.json');
+const ROOMS_CACHE  = path.join(__dirname, '..', 'data', 'zhibojian_rooms.json'); // 群列表缓存
+const MAX_ITEMS    = 150;
+const PAGE_SIZE    = 30;
 
 // ── HTTP POST 工具 ────────────────────────────────────────────────────────
 function postJSON(urlStr, body, token) {
@@ -66,13 +67,23 @@ function writeState(state) {
   fs.writeFileSync(STATE_FILE, JSON.stringify(state, null, 2));
 }
 
-// ── 获取所有直播间列表 ────────────────────────────────────────────────────
+// ── 获取所有直播间列表（带缓存） ─────────────────────────────────────────
 async function fetchRoomList(token) {
   const data = await postJSON(`${BASE_URL}/4/api/room/list`, {}, token);
   if (data.code !== 200 || !Array.isArray(data.list)) {
+    // token 失效时尝试返回缓存
+    if (data.code === 502 || data.code === 1) {
+      try {
+        const cached = JSON.parse(fs.readFileSync(ROOMS_CACHE, 'utf8'));
+        console.warn('[zhibojian] token 失效，使用缓存群列表');
+        return cached;
+      } catch { /* 无缓存 */ }
+    }
     throw new Error('room/list failed: ' + JSON.stringify(data).slice(0, 100));
   }
-  return data.list; // [{id, title, msg, msgtime, ...}]
+  // 成功时更新缓存
+  fs.writeFileSync(ROOMS_CACHE, JSON.stringify(data.list, null, 2));
+  return data.list;
 }
 
 // ── 获取某个直播间的消息列表（增量）──────────────────────────────────────
@@ -80,7 +91,13 @@ async function fetchRoomList(token) {
 // 增量策略：记录 lastId，只保留 id > lastId 的新消息
 async function fetchMessages(roomId, token, lastId) {
   const data = await postJSON(`${BASE_URL}/4/api/msg/list`, { rid: roomId, msgid: 0 }, token);
-  if (!data || data.code !== 200 || !Array.isArray(data.list)) return [];
+  if (!data || data.code !== 200) {
+    if (data && (data.code === 502 || data.msg === '未登陆' || data.msg === '未登录')) {
+      throw new Error('TOKEN_EXPIRED');
+    }
+    return [];
+  }
+  if (!Array.isArray(data.list)) return [];
   let msgs = data.list;
   if (lastId) {
     msgs = msgs.filter(m => Number(m.id) > Number(lastId));
@@ -167,6 +184,7 @@ async function scrape(token, settings) {
   let articles  = readArticles();
   const existingIds = new Set(articles.map(a => a.id));
   let totalAdded = 0;
+  let tokenExpired = false;
 
   // 确定要抓取的房间列表
   let targetRooms = [];
@@ -193,6 +211,7 @@ async function scrape(token, settings) {
       const msgs   = await fetchMessages(room.id, token, lastId);
       if (msgs.length === 0) return;
 
+
       const newArticles = [];
       for (const msg of msgs) {
         const art = msgToArticle(msg, room.title);
@@ -211,7 +230,12 @@ async function scrape(token, settings) {
         console.log(`[zhibojian] 「${room.title}」新增 ${newArticles.length} 条`);
       }
     } catch(e) {
-      console.error(`[zhibojian] room ${room.id} (${room.title}) failed:`, e.message);
+      if (e.message === 'TOKEN_EXPIRED') {
+        console.warn(`[zhibojian] token 已失效，请到后台更新 token`);
+        tokenExpired = true;
+      } else {
+        console.error(`[zhibojian] room ${room.id} (${room.title}) failed:`, e.message);
+      }
     }
   }));
 
@@ -226,7 +250,7 @@ async function scrape(token, settings) {
     writeState(state);
   }
 
-  return { added: totalAdded };
+  return { added: totalAdded, tokenExpired };
 }
 
 // ── 获取房间列表（供后台管理页） ──────────────────────────────────────────
