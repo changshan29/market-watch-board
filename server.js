@@ -613,8 +613,16 @@ const server = http.createServer((req, res) => {
       res.writeHead(200, { 'Content-Type': 'application/json; charset=utf-8', 'Access-Control-Allow-Origin': '*' });
       res.end(JSON.stringify({ ok: true, rooms: list.map(r => ({ id: r.id, title: r.title })) }));
     }).catch(e => {
-      res.writeHead(500, { 'Content-Type': 'application/json', 'Access-Control-Allow-Origin': '*' });
-      res.end(JSON.stringify({ error: e.message }));
+      // token 失效时尝试返回缓存
+      const cacheFile = path.join(__dirname, 'data', 'zhibojian_rooms.json');
+      try {
+        const cached = JSON.parse(fs.readFileSync(cacheFile, 'utf8'));
+        res.writeHead(200, { 'Content-Type': 'application/json; charset=utf-8', 'Access-Control-Allow-Origin': '*' });
+        res.end(JSON.stringify({ ok: true, fromCache: true, rooms: cached.map(r => ({ id: r.id, title: r.title })) }));
+      } catch {
+        res.writeHead(500, { 'Content-Type': 'application/json', 'Access-Control-Allow-Origin': '*' });
+        res.end(JSON.stringify({ error: e.message }));
+      }
     });
     return;
   }
