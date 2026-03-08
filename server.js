@@ -702,16 +702,16 @@ const server = http.createServer((req, res) => {
     return;
   }
 
-  // POST /api/zhibojian/scrape-now — 立即触发一次抓取
+  // POST /api/zhibojian/scrape-now — 立即触发一次抓取（异步，立即返回）
   if (req.method === 'POST' && url.pathname === '/api/zhibojian/scrape-now') {
     if (!requireAuth(req, res)) return;
+    res.writeHead(200, { 'Content-Type': 'application/json; charset=utf-8', 'Access-Control-Allow-Origin': '*' });
+    res.end(JSON.stringify({ ok: true, status: 'scraping in background' }));
+    // 后台异步执行，不阻塞响应
     runZhibojianNow().then(result => {
-      res.writeHead(200, { 'Content-Type': 'application/json; charset=utf-8', 'Access-Control-Allow-Origin': '*' });
-      res.end(JSON.stringify({ ok: true, ...result }));
-    }).catch(e => {
-      res.writeHead(500, { 'Content-Type': 'application/json', 'Access-Control-Allow-Origin': '*' });
-      res.end(JSON.stringify({ error: e.message }));
-    });
+      if (result.added > 0) _articlesCacheTime = 0;
+      console.log('[scrape-now] done:', result);
+    }).catch(e => console.error('[scrape-now] error:', e.message));
     return;
   }
 
