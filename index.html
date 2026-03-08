@@ -839,7 +839,9 @@
         .slice(0, 30);
       renderPanel('list-wechat', 'cnt-wechat', fallback, true);
     } else {
-      renderPanel('list-wechat', 'cnt-wechat', xiaozuowen);
+      // 飞书消息 ID 是雪花 ID（越大越新），按 ID 降序 = 最新消息在最上面
+      const sorted = [...xiaozuowen].sort((a, b) => String(b.id || '').localeCompare(String(a.id || '')));
+      renderPanel('list-wechat', 'cnt-wechat', sorted);
     }
   }
 
