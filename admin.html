@@ -313,7 +313,14 @@
 
       <!-- Token 设置 -->
       <div style="margin-bottom:10px;">
-        <label style="font-size:12px;color:#666;">登录 Token</label>
+        <div style="display:flex;align-items:center;justify-content:space-between;">
+          <label style="font-size:12px;color:#666;">登录 Token</label>
+          <span style="font-size:11px;color:#aaa;">
+            失效时：打开
+            <a href="http://43.142.67.10:1000/#/" target="_blank" style="color:#4ecb71;">直播间</a>
+            → 按 F12 → Console → 输入 <code style="background:#f5f5f5;padding:1px 4px;border-radius:3px;">localStorage.getItem('token')</code> → 复制结果粘贴到此
+          </span>
+        </div>
         <input id="zb-token" type="text" placeholder="粘贴登录 token"
           style="width:100%;margin-top:4px;padding:6px 8px;border:1px solid #ddd;border-radius:6px;font-size:12px;box-sizing:border-box;">
       </div>
@@ -576,25 +583,31 @@
       const d = await r.json();
       if (!d.ok || !d.rooms) throw new Error(d.error || '获取失败');
       allRooms = d.rooms;
-      renderRoomList();
+      if (d.fromCache) {
+        el.innerHTML = '<div style="font-size:11px;color:#e67e22;padding:4px 6px;margin-bottom:6px;">⚠️ Token 已失效，显示的是上次缓存的群列表</div>';
+        el.innerHTML += renderRoomsHTML();
+      } else {
+        renderRoomList();
+      }
     } catch(e) {
       el.innerHTML = `<div style="font-size:12px;color:#e74c3c;text-align:center;padding:16px 0;">加载失败：${e.message}</div>`;
     }
   }
 
-  function renderRoomList() {
-    const el = document.getElementById('zb-rooms-list');
-    if (!allRooms.length) {
-      el.innerHTML = '<div style="font-size:12px;color:#aaa;text-align:center;padding:20px 0;">暂无群组</div>';
-      return;
-    }
-    el.innerHTML = allRooms.map(r => `
+  function renderRoomsHTML() {
+    if (!allRooms.length) return '<div style="font-size:12px;color:#aaa;text-align:center;padding:20px 0;">暂无群组</div>';
+    return allRooms.map(r => `
       <label style="display:flex;align-items:center;gap:8px;padding:5px 4px;cursor:pointer;font-size:13px;border-bottom:1px solid #f5f5f5;">
         <input type="checkbox" value="${r.id}" ${enabledRoomIds.has(String(r.id)) ? 'checked' : ''}
           onchange="toggleRoom(${r.id}, '${escHtml(r.title || '')}', this.checked)">
         <span>${escHtml(r.title || '未命名')}</span>
       </label>
     `).join('');
+  }
+
+  function renderRoomList() {
+    const el = document.getElementById('zb-rooms-list');
+    el.innerHTML = renderRoomsHTML();
   }
 
   function toggleRoom(id, title, checked) {
@@ -611,11 +624,21 @@
     try {
       const r = await fetch('/api/zhibojian/scrape-now', { method: 'POST' });
       const d = await r.json();
-      msgEl.textContent = d.ok ? `✓ 完成，新增 ${d.added} 条消息` : `✗ 失败：${d.error}`;
+      if (d.tokenExpired) {
+        msgEl.style.color = '#e74c3c';
+        msgEl.textContent = '⚠️ Token 已失效！请按上方提示更新 token 后保存';
+      } else if (d.ok) {
+        msgEl.style.color = '#27ae60';
+        msgEl.textContent = `✓ 完成，新增 ${d.added} 条消息`;
+      } else {
+        msgEl.style.color = '#e74c3c';
+        msgEl.textContent = `✗ 失败：${d.error}`;
+      }
     } catch(e) {
+      msgEl.style.color = '#e74c3c';
       msgEl.textContent = `✗ 请求失败：${e.message}`;
     }
-    setTimeout(() => { msgEl.textContent = ''; }, 4000);
+    setTimeout(() => { msgEl.textContent = ''; msgEl.style.color = ''; }, 6000);
   }
 
   // ── 保存 ────────────────────────────────────────────────────────────────────
