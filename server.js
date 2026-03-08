@@ -335,6 +335,15 @@ function getZbCfg() {
 (async () => {
   console.log('[zhibojian] startup scrape...');
   try {
+    // 如果已有文章但缺少 source_sub_type，清空 state 让全量抓取并修补
+    const existingArts = readArticles();
+    const zbArts = existingArts.filter(a => a.source_label === '小作文');
+    const missingSubType = zbArts.filter(a => !a.source_sub_type);
+    if (missingSubType.length > 0 && missingSubType.length === zbArts.length) {
+      console.log(`[zhibojian] 检测到 ${missingSubType.length} 条小作文缺少 source_sub_type，清空state强制全量修补`);
+      const stateFile = path.join(__dirname, 'data', 'zhibojian_state.json');
+      try { fs.writeFileSync(stateFile, '{}'); } catch {}
+    }
     const result = await runZhibojianNow();
     console.log(`[zhibojian] startup done, added=${result.added}`);
   } catch(e) {
