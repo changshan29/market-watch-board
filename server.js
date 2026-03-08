@@ -111,13 +111,13 @@ function scheduleZhibojian() {
   if (zhibojianTimer) clearTimeout(zhibojianTimer);
   const settings = readJson(SETTINGS_FILE, DEFAULT_SETTINGS);
   const intervalSec = (settings.intervals && settings.intervals.zhibojian) || 120;
-  const zbCfg = settings.zhibojian || {};
-  const token = zbCfg.token || '';
+  const token = getZbToken();
   if (!token) { console.log('[zhibojian] no token, skipping'); return; }
   zhibojianTimer = setTimeout(async () => {
     try {
-      const result = await zhibojian.scrape(token, zbCfg);
+      const result = await zhibojian.scrape(getZbToken(), getZbCfg());
       if (result.added > 0) console.log(`[zhibojian] added ${result.added} new messages`);
+      if (result.tokenExpired) console.warn('[zhibojian] token expired! needs refresh via /api/zhibojian/refresh-token');
     } catch(e) {
       console.error('[zhibojian] scrape error:', e.message);
     }
@@ -126,11 +126,9 @@ function scheduleZhibojian() {
 }
 
 async function runZhibojianNow() {
-  const settings = readJson(SETTINGS_FILE, DEFAULT_SETTINGS);
-  const zbCfg = settings.zhibojian || {};
-  const token = zbCfg.token || '';
+  const token = getZbToken();
   if (!token) return { added: 0, error: 'no token' };
-  return zhibojian.scrape(token, zbCfg);
+  return zhibojian.scrape(token, getZbCfg());
 }
 
 function readJson(file, fallback) {
@@ -283,6 +281,19 @@ exec('python3 -u run_cailianshe_2.py --no-kb --fast', {
 });
 
 // ── 直播间定时抓取：启动时立即执行一次，然后定时循环 ──────────────────────
+let zbTokenOverride = null;  // 运行时 token 覆盖（通过 /api/zhibojian/refresh-token 更新）
+
+function getZbToken() {
+  if (zbTokenOverride) return zbTokenOverride;
+  const settings = readJson(SETTINGS_FILE, DEFAULT_SETTINGS);
+  return ((settings.zhibojian || {}).token) || '';
+}
+
+function getZbCfg() {
+  const settings = readJson(SETTINGS_FILE, DEFAULT_SETTINGS);
+  const cfg = settings.zhibojian || {};
+  return Object.assign({}, cfg, zbTokenOverride ? { token: zbTokenOverride } : {});
+}
 (async () => {
   console.log('[zhibojian] startup scrape...');
   try {
@@ -623,6 +634,27 @@ const server = http.createServer((req, res) => {
         res.writeHead(500, { 'Content-Type': 'application/json', 'Access-Control-Allow-Origin': '*' });
         res.end(JSON.stringify({ error: e.message }));
       }
+    });
+    return;
+  }
+
+  // POST /api/zhibojian/refresh-token — 外部推送新 token（供 openclaw 自动化调用）
+  if (req.method === 'POST' && url.pathname === '/api/zhibojian/refresh-token') {
+    readBody(req).then(data => {
+      const newToken = (data && data.token) || '';
+      if (!newToken || newToken.length < 10) {
+        res.writeHead(400, { 'Content-Type': 'application/json', 'Access-Control-Allow-Origin': '*' });
+        res.end(JSON.stringify({ error: 'invalid token' }));
+        return;
+      }
+      zbTokenOverride = newToken;
+      console.log(`[zhibojian] token refreshed via API: ${newToken.substring(0, 8)}...`);
+      // 立即触发一次抓取
+      runZhibojianNow().then(r => console.log(`[zhibojian] post-refresh scrape: added=${r.added}`));
+      res.writeHead(200, { 'Content-Type': 'application/json; charset=utf-8', 'Access-Control-Allow-Origin': '*' });
+      res.end(JSON.stringify({ ok: true, token_preview: newToken.substring(0, 8) + '...' }));
+    }).catch(e => {
+      res.writeHead(400); res.end(JSON.stringify({ error: e.message }));
     });
     return;
   }
