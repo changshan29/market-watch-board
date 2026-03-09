@@ -25,10 +25,13 @@ STATE_FILE = Path(__file__).parent.parent / "data" / "xueqiu_state.json"  # 记�
 # 每次爬取的用户数量（可调整）
 BATCH_SIZE = 5
 
-# API 请求头
+# API 请求头（移动端 UA，WAF 限制宽松）
 _API_HEADERS = {
-    'User-Agent': 'Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36',
+    'User-Agent': 'Mozilla/5.0 (iPhone; CPU iPhone OS 17_0 like Mac OS X) AppleWebKit/605.1.15 (KHTML, like Gecko) Mobile/15E148 xueqiu/2.0',
     'Referer': 'https://xueqiu.com/',
+    'Accept': 'application/json, text/plain, */*',
+    'Accept-Language': 'zh-CN,zh;q=0.9',
+    'X-Requested-With': 'XMLHttpRequest',
 }
 
 # 尝试导入Selenium，如果失败则标记为不可用
@@ -72,7 +75,14 @@ def _fetch_user_with_api(user_id: str, count: int = 20) -> list[dict]:
 
     try:
         # 先访问主页，获取 cookie（xq_a_token）
-        session.get("https://xueqiu.com/", timeout=15)
+        r0 = session.get("https://xueqiu.com/", timeout=15)
+        if r0.status_code != 200:
+            print(f"[xueqiu-api] 主页访问失败: {r0.status_code}")
+            return []
+        time.sleep(2)
+
+        # 再访问用户主页，进一步初始化 cookie
+        session.get(f"https://xueqiu.com/u/{user_id}", timeout=15)
         time.sleep(1)
 
         resp = session.get(
@@ -80,11 +90,16 @@ def _fetch_user_with_api(user_id: str, count: int = 20) -> list[dict]:
             params={"user_id": user_id, "page": 1, "count": count, "type": ""},
             timeout=15,
         )
-        resp.raise_for_status()
+        if resp.status_code == 302 or 'login' in resp.url:
+            print(f"[xueqiu-api] user {user_id}: 被重定向到登录页（WAF拦截）")
+            return []
+        if resp.status_code != 200:
+            print(f"[xueqiu-api] user {user_id}: HTTP {resp.status_code}")
+            return []
         data = resp.json()
         statuses = data.get("statuses", [])
         if not statuses:
-            print(f"[xueqiu-api] user {user_id}: 返回空列表（可能需要登录或已被限流）")
+            print(f"[xueqiu-api] user {user_id}: 返回空列表（可能需要登录或已被限流）code={data.get('error_code','')}")
             return []
 
         articles = []
