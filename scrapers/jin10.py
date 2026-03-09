@@ -43,6 +43,10 @@ def scrape_jin10(max_items=30):
             
             # 标题优先用 title，否则截取 content 前50字
             final_title = title_text if title_text else (content_text[:50] + ('…' if len(content_text) > 50 else ''))
+
+            # 跳过空内容条目
+            if not final_title and not content_text.strip():
+                continue
             
             # 时间格式：2026-03-08 23:10:07
             time_str = item.get("time", "")
