@@ -404,6 +404,7 @@ const server = http.createServer((req, res) => {
       articles = articles.map(a => ({
         id: a.id, title: a.title, summary: a.summary,
         source_label: a.source_label, source_type: a.source_type, source_sub: a.source_sub,
+        source_sub_type: a.source_sub_type,
         published_at: a.published_at, url: a.url, topic_label: a.topic_label,
         industry_label: a.industry_label, kb_matched: a.kb_matched,
         // 只保留 content_html 里的第一张 img src，供缩略图使用

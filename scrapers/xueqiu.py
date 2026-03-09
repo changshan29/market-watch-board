@@ -466,12 +466,15 @@ def fetch(count: int = 20) -> list[dict]:
     for user in batch_users:
         uid = user.get("id") or user.get("user_id")
 
-        # 直接用 Selenium（API 被雪球 WAF 拦截，云服务器 IP 无法访问）
+        # 优先用 Selenium；若 driver 创建失败（容器环境无 Chromium）则降级到 API
         if SELENIUM_AVAILABLE:
             items = _fetch_user_with_selenium(str(uid), count)
         else:
-            print("[xueqiu] Selenium不可用，跳过")
             items = []
+
+        if not items:
+            print(f"[xueqiu] Selenium 无结果，降级到 API 方式...")
+            items = _fetch_user_with_api(str(uid), count)
 
         # 如果获取到文章且用户名为空，自动更新用户名
         if items and not user.get("name"):
