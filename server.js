@@ -107,6 +107,34 @@ const DEFAULT_SETTINGS = { intervals: { webpages: 1800, xueqiu: 600 }, plugin_in
 const zhibojian = require('./scrapers/zhibojian');
 let zhibojianTimer = null;
 
+// ── 推送直播间新文章到 Railway ──────────────────────────────────────────────
+const RAILWAY_PUSH_URL = 'https://web-production-af97c.up.railway.app/api/push-articles';
+const RAILWAY_AUTH     = 'Basic ' + Buffer.from('admin:1995').toString('base64');
+
+function pushNewZhibojianToRailway(articles) {
+  if (!articles || !articles.length) return;
+  const https = require('https');
+  const payload = JSON.stringify(articles);
+  try {
+    const parsed = new URL(RAILWAY_PUSH_URL);
+    const req = https.request({
+      hostname: parsed.hostname, port: 443,
+      path: parsed.pathname, method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        'Content-Length': Buffer.byteLength(payload),
+        'Authorization': RAILWAY_AUTH,
+      },
+      timeout: 15000,
+    }, res => {
+      let d = ''; res.on('data', c => d += c);
+      res.on('end', () => console.log(`[zhibojian->railway] pushed ${articles.length} articles, response: ${d.slice(0,80)}`));
+    });
+    req.on('error', e => console.warn('[zhibojian->railway] push error:', e.message));
+    req.write(payload); req.end();
+  } catch(e) { console.warn('[zhibojian->railway] push failed:', e.message); }
+}
+
 function scheduleZhibojian() {
   if (zhibojianTimer) clearTimeout(zhibojianTimer);
   const settings = readSettings();
@@ -119,6 +147,8 @@ function scheduleZhibojian() {
       if (result.added > 0) {
         console.log(`[zhibojian] added ${result.added} new messages`);
         _articlesCacheTime = 0; // 强制下次读取时刷新缓存
+        // 把新增的直播间消息推给 Railway（Railway IP 无法直接访问直播间 API）
+        pushNewZhibojianToRailway(result.newArticles || []);
       }
       if (result.tokenExpired) console.warn('[zhibojian] token expired! needs refresh via /api/zhibojian/refresh-token');
     } catch(e) {
