@@ -724,6 +724,40 @@ const server = http.createServer((req, res) => {
     return;
   }
 
+  // POST /api/push-articles — 从本地机器推送直播间文章到 Railway
+  if (req.method === 'POST' && url.pathname === '/api/push-articles') {
+    if (!requireAuth(req, res)) return;
+    let body = '';
+    req.on('data', c => body += c);
+    req.on('end', () => {
+      try {
+        const incoming = JSON.parse(body);
+        const newArts = Array.isArray(incoming) ? incoming : (incoming.articles || []);
+        if (!newArts.length) {
+          res.writeHead(200, { 'Content-Type': 'application/json', 'Access-Control-Allow-Origin': '*' });
+          res.end(JSON.stringify({ ok: true, added: 0 }));
+          return;
+        }
+        const existing = readArticles();
+        const existingIds = new Set(existing.map(a => a.id));
+        const toAdd = newArts.filter(a => a.id && !existingIds.has(a.id));
+        if (toAdd.length > 0) {
+          const merged = [...toAdd, ...existing];
+          fs.writeFileSync(DATA_FILE, JSON.stringify(merged, null, 2));
+          writeArticlesCache(merged);
+          _articlesCacheTime = 0;
+          console.log(`[push-articles] added ${toAdd.length} articles from remote push`);
+        }
+        res.writeHead(200, { 'Content-Type': 'application/json', 'Access-Control-Allow-Origin': '*' });
+        res.end(JSON.stringify({ ok: true, added: toAdd.length }));
+      } catch(e) {
+        res.writeHead(400, { 'Content-Type': 'application/json', 'Access-Control-Allow-Origin': '*' });
+        res.end(JSON.stringify({ ok: false, error: e.message }));
+      }
+    });
+    return;
+  }
+
   // POST /api/zhibojian/reset — 清空直播间数据并全量重抓（修复 source_sub_type 缺失）
   if (req.method === 'POST' && url.pathname === '/api/zhibojian/reset') {
     if (!requireAuth(req, res)) return;
