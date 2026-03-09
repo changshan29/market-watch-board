@@ -6,17 +6,13 @@
     "zhibojian": 600
   },
   "zhibojian": {
-    "token": "16257c586bc26e0feb507e2b0c357efc",
+    "token": "f923ab120435f0977076f79275a12a7e",
     "xiaozuowen_rooms": [
       { "id": 37828, "title": "信息平权" },
-      { "id": 37847, "title": "嗅嗅挖金" },
-      { "id": 37902, "title": "唐史主任司马迁" },
-      { "id": 37834, "title": "一图调研" }
+      { "id": 37847, "title": "嗅嗅挖金" }
     ],
     "jigou_rooms": [
-      { "id": 37897, "title": "研讯社" },
-      { "id": 37843, "title": "水木调研" },
-      { "id": 37833, "title": "每日调研" }
+      { "id": 37843, "title": "水木调研" }
     ]
   }
 }
