@@ -873,49 +873,42 @@ const server = http.createServer((req, res) => {
       res.end(JSON.stringify({ error: '缺少用户ID' }));
       return;
     }
-    const pyScript = `
-from selenium import webdriver
-from selenium.webdriver.chrome.options import Options
-from selenium.webdriver.common.by import By
-from selenium.webdriver.support.ui import WebDriverWait
-from selenium.webdriver.support import expected_conditions as EC
-import sys
-import time
-
-user_id = sys.argv[1]
-
-options = Options()
-options.add_argument('--headless')
-options.add_argument('--no-sandbox')
-options.add_argument('--disable-dev-shm-usage')
-options.add_argument('--disable-gpu')
-options.add_experimental_option("excludeSwitches", ["enable-automation"])
-
-try:
-    driver = webdriver.Chrome(options=options)
-    driver.get(f"https://xueqiu.com/u/{user_id}")
-
-    wait = WebDriverWait(driver, 10)
-    wait.until(EC.presence_of_element_located((By.CSS_SELECTOR, ".timeline__item")))
-    time.sleep(3)
-
-    # 提取用户名
-    name_elem = driver.find_element(By.CSS_SELECTOR, ".user-name")
-    print(name_elem.text.strip())
-
-    driver.quit()
-except Exception:
-    print("")
-    try:
-        driver.quit()
-    except:
-        pass
-`;
-    execFile('python3', ['-c', pyScript, userId], { timeout: 35000, cwd: __dirname }, (err, stdout, stderr) => {
-      const username = stdout.trim();
-      res.writeHead(200, { 'Content-Type': 'application/json; charset=utf-8', 'Access-Control-Allow-Origin': '*' });
-      res.end(JSON.stringify({ name: username || '' }));
+    // 用雪球 API 获取用户名（无需 Selenium）
+    const https = require('https');
+    const apiUrl = `https://xueqiu.com/v4/statuses/user_timeline.json?user_id=${userId}&page=1&count=1`;
+    const reqOpts = {
+      hostname: 'xueqiu.com', path: `/v4/statuses/user_timeline.json?user_id=${userId}&page=1&count=1`,
+      headers: {
+        'User-Agent': 'Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 Chrome/120.0.0.0 Safari/537.36',
+        'Referer': 'https://xueqiu.com/',
+        'Cookie': '',
+      },
+      timeout: 10000,
+    };
+    // 先获取 cookie
+    const cookieReq = https.get({ hostname: 'xueqiu.com', path: '/', headers: reqOpts.headers, timeout: 8000 }, cookieRes => {
+      const cookies = (cookieRes.headers['set-cookie'] || []).map(c => c.split(';')[0]).join('; ');
+      reqOpts.headers['Cookie'] = cookies;
+      const apiReq = https.get(reqOpts, apiRes => {
+        let d = ''; apiRes.on('data', c => d += c);
+        apiRes.on('end', () => {
+          try {
+            const data = JSON.parse(d);
+            const statuses = data.statuses || [];
+            const name = statuses.length > 0 ? (statuses[0].user || {}).screen_name || '' : '';
+            res.writeHead(200, { 'Content-Type': 'application/json; charset=utf-8', 'Access-Control-Allow-Origin': '*' });
+            res.end(JSON.stringify({ name }));
+          } catch {
+            res.writeHead(200, { 'Content-Type': 'application/json', 'Access-Control-Allow-Origin': '*' });
+            res.end(JSON.stringify({ name: '' }));
+          }
+        });
+      });
+      apiReq.on('error', () => { res.writeHead(200); res.end(JSON.stringify({ name: '' })); });
+      apiReq.on('timeout', () => { apiReq.destroy(); res.writeHead(200); res.end(JSON.stringify({ name: '' })); });
     });
+    cookieReq.on('error', () => { res.writeHead(200); res.end(JSON.stringify({ name: '' })); });
+    cookieReq.on('timeout', () => { cookieReq.destroy(); res.writeHead(200); res.end(JSON.stringify({ name: '' })); });
     return;
   }
 
