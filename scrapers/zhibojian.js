@@ -197,6 +197,7 @@ async function scrape(token, settings) {
   await keepAlive(token);
 
   const state   = readState();
+  const prevState = { ...state };  // 保存抓取前的状态，用于确定新增消息
   let articles  = readArticles();
   const existingIds = new Set(articles.map(a => a.id));
   let totalAdded = 0;
@@ -277,7 +278,19 @@ async function scrape(token, settings) {
     writeState(state);
   }
 
-  return { added: totalAdded, tokenExpired };
+  // 收集本次新增的文章（用于推送到 Railway）
+  const newArticlesList = [];
+  for (const room of tasks) {
+    const roomKey = String(room.id);
+    const arts = articles.filter(a => a.source_sub === room.title && a.source_label === '小作文');
+    const prevLastId = Number(prevState && prevState[roomKey] || 0);
+    for (const a of arts) {
+      const msgId = Number(String(a.id).split('_').pop()) || 0;
+      if (msgId > prevLastId) newArticlesList.push(a);
+    }
+  }
+
+  return { added: totalAdded, tokenExpired, newArticles: newArticlesList };
 }
 
 // ── 获取房间列表（供后台管理页） ──────────────────────────────────────────
